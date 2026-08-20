@@ -293,7 +293,7 @@ def phone_signal(person: PersonObs, objects: list[ObjectDet], kp_thr: float = 1.
                 continue
             d_head = math.hypot(o.box.cx - hx, o.box.cy - hy)
             d_wrist = min([math.hypot(o.box.cx - wx, o.box.cy - wy) for wx, wy in wrists], default=1e9)
-            if d_head < near_ratio * hr * 2 or d_wrist < near_ratio * hr:
+            if d_head < near_ratio * hr or d_wrist < near_ratio * hr:
                 phone_hit = True
                 if o.score > phone_score:
                     phone_score, phone_box = o.score, o.box.as_list()

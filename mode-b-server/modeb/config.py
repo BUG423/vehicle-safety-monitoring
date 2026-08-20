@@ -55,7 +55,7 @@ class RuleConfig:
     driver_side: str = field(default_factory=lambda: _s("MODEB_DRIVER_SIDE", "left"))
     """驾驶位在画面的哪一侧（左舵车正对镜头时通常在画面左半边）。"""
 
-    seatbelt_score_thr: float = field(default_factory=lambda: _f("MODEB_BELT_THR", 0.28))
+    seatbelt_score_thr: float = field(default_factory=lambda: _f("MODEB_BELT_THR", 0.15))
     eye_open_thr: float = field(default_factory=lambda: _f("MODEB_EYE_OPEN_THR", 0.28))
     perclos_window_s: float = field(default_factory=lambda: _f("MODEB_PERCLOS_WIN", 20.0))
     perclos_thr: float = field(default_factory=lambda: _f("MODEB_PERCLOS_THR", 0.40))

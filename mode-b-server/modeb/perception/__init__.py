@@ -2,11 +2,11 @@
 from .base import (BBox, COCO_KP, Detector, IoUTracker, KP_INDEX, ObjectDet,
                    PerceptionResult, PersonObs, assign_seats)
 from .mock_detector import CartoonCockpitDetector, ScriptedMockDetector
-from .registry import available_backends, build_detector, last_fallback_reason
+from .registry import (available_backends, build_detector, build_face_module, fallback_log)
 
 __all__ = [
     "BBox", "COCO_KP", "Detector", "IoUTracker", "KP_INDEX", "ObjectDet",
     "PerceptionResult", "PersonObs", "assign_seats",
     "CartoonCockpitDetector", "ScriptedMockDetector",
-    "build_detector", "available_backends", "last_fallback_reason",
+    "build_detector", "build_face_module", "available_backends", "fallback_log",
 ]

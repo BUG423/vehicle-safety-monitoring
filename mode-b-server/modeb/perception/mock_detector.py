@@ -115,6 +115,13 @@ class CartoonCockpitDetector(Detector):
 
     # -- 头/躯干 → COCO 17 点 ----------------------------------------------
     def _build_person(self, img: np.ndarray, head, body) -> PersonObs | None:
+        """由头部色块的位置与尺寸折算出 COCO 17 点。
+
+        合成驾驶舱里人体按固定比例绘制（肩、髋相对头部的位置是常数），
+        所以「检出头 → 推出肩/髋」在这段素材上是成立的几何关系。
+        注意：**检测器只负责定位，不负责判定**——安全带有没有、眼睛睁没睁，
+        全部交给 analyzers 去读那几块 ROI 的像素，与真模型路径共用同一份代码。
+        """
         hx1, hy1, hx2, hy2 = head
         hw, hh = hx2 - hx1, hy2 - hy1
         if hw < 12 or hh < 12:
@@ -124,73 +131,51 @@ class CartoonCockpitDetector(Detector):
         kp = np.zeros((17, 3), dtype=np.float32)
 
         def put(name: str, x: float, y: float, s: float = _KP_STRONG) -> None:
-            i = KP_INDEX[name]
-            kp[i] = (x, y, s)
+            kp[KP_INDEX[name]] = (x, y, s)
 
-        # 面部：眼睛用画面里真实的眼部区域定位（见 _find_eyes），找不到就按几何摆放
-        eyes = self._find_eyes(img, head)
-        if eyes is not None:
-            (rex, rey), (lex, ley) = eyes
-        else:
-            rex, rey = hcx - 0.20 * hw, hcy - 0.10 * hh
-            lex, ley = hcx + 0.20 * hw, hcy - 0.10 * hh
-        put("right_eye", rex, rey)
-        put("left_eye", lex, ley)
-        put("nose", (rex + lex) / 2, (rey + ley) / 2 + 0.16 * hh)
+        # 眼位：先按人体比例落点，再在小窗口内往「与皮肤色差最大处」微调
+        eye_y = hy1 + 0.44 * hh
+        for name, sign in (("right_eye", -1), ("left_eye", +1)):
+            ex, ey = self._refine_eye(img, hcx + sign * 0.19 * hw, eye_y, 0.13 * hw, 0.10 * hh)
+            put(name, ex, ey)
+        put("nose", hcx, hy1 + 0.62 * hh)
         put("right_ear", hx1 + 0.03 * hw, hcy)
         put("left_ear", hx2 - 0.03 * hw, hcy)
 
+        # 肩 / 髋：安全带锚点相对头部的比例（对照 bench/make_clip.py 的画法标定）
+        sh_y = hcy + 0.44 * hh
+        hip_y = hcy + 1.41 * hh
+        put("right_shoulder", hcx - 0.50 * hw, sh_y)
+        put("left_shoulder", hcx + 0.50 * hw, sh_y)
+        put("right_hip", hcx - 0.44 * hw, hip_y)
+        put("left_hip", hcx + 0.44 * hw, hip_y)
+
         if body is not None:
             bx1, by1, bx2, by2 = body
-            bw = bx2 - bx1
-            put("right_shoulder", bx1 + 0.10 * bw, by1 + 0.06 * (by2 - by1))
-            put("left_shoulder", bx2 - 0.10 * bw, by1 + 0.06 * (by2 - by1))
-            put("right_hip", bx1 + 0.22 * bw, by2 - 0.05 * (by2 - by1))
-            put("left_hip", bx2 - 0.22 * bw, by2 - 0.05 * (by2 - by1))
-            box = BBox(min(hx1, bx1), hy1, max(hx2, bx2), by2)
+            box = BBox(min(hx1, bx1), hy1, max(hx2, bx2), max(by2, hip_y))
         else:
-            put("right_shoulder", hcx - 0.9 * hw, hy2 + 0.35 * hh, _KP_WEAK)
-            put("left_shoulder", hcx + 0.9 * hw, hy2 + 0.35 * hh, _KP_WEAK)
-            box = BBox(hx1 - 0.6 * hw, hy1, hx2 + 0.6 * hw, hy2 + 2.4 * hh)
-
+            box = BBox(hx1 - 0.6 * hw, hy1, hx2 + 0.6 * hw, hip_y)
         return PersonObs(box=box, score=0.9, keypoints=kp)
 
-    def _find_eyes(self, img: np.ndarray, head) -> tuple[tuple[float, float], tuple[float, float]] | None:
-        """在头部 ROI 上半部找两个左右对称的「眼位」。
+    @staticmethod
+    def _refine_eye(img: np.ndarray, cx: float, cy: float, rx: float, ry: float
+                    ) -> tuple[float, float]:
+        """在候选点周围找「与局部中值色差最大」的像素团中心。
 
-        睁眼时是白色巩膜块，闭眼时是一条深色横线 —— 两种情况都要能定位，
-        否则闭眼帧会因为「找不到眼睛」而被跳过，疲劳就永远检不出来。
-        因此这里用「与周围皮肤色差最大的区域」而不是「白色区域」来定位。
+        睁眼时是白色巩膜 + 深色瞳孔，闭眼时是一条深色横线 —— 两者都是高色差区域，
+        因此用「色差最大」而不是「找白色」，闭眼帧才不会因为定位失败被整帧跳过。
         """
-        hx1, hy1, hx2, hy2 = [int(v) for v in head]
-        roi = img[max(0, hy1):hy2, max(0, hx1):hx2]
-        if roi.size == 0 or roi.shape[0] < 12 or roi.shape[1] < 12:
-            return None
-        rh, rw = roi.shape[:2]
-        band = roi[int(0.18 * rh):int(0.62 * rh), :]
-        if band.size == 0:
-            return None
-        gray = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
-        med = float(np.median(gray))
-        diff = np.abs(gray.astype(np.int16) - med).astype(np.uint8)
-        _, mask = cv2.threshold(diff, 40, 255, cv2.THRESH_BINARY)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 5), np.uint8))
-        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cands = []
-        for c in cnts:
-            x, y, bw, bh = cv2.boundingRect(c)
-            if bw < 4 or bh < 1 or bw > 0.5 * rw:
-                continue
-            cands.append((x + bw / 2, y + bh / 2, bw * bh))
-        if len(cands) < 2:
-            return None
-        cands.sort(key=lambda c: c[2], reverse=True)
-        top = sorted(cands[:4], key=lambda c: c[0])
-        left_c, right_c = top[0], top[-1]
-        if right_c[0] - left_c[0] < 0.18 * rw:
-            return None
-        ox, oy = max(0, hx1), max(0, hy1) + int(0.18 * rh)
-        return (ox + left_c[0], oy + left_c[1]), (ox + right_c[0], oy + right_c[1])
+        x1, y1 = int(cx - rx), int(cy - ry)
+        x2, y2 = int(cx + rx), int(cy + ry)
+        roi = img[max(0, y1):y2, max(0, x1):x2]
+        if roi.size == 0 or roi.shape[0] < 3 or roi.shape[1] < 3:
+            return cx, cy
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY).astype(np.int16)
+        diff = np.abs(gray - int(np.median(gray))).astype(np.uint8)
+        if int(diff.max()) < 25:
+            return cx, cy
+        ys, xs = np.where(diff >= diff.max() * 0.6)
+        return float(max(0, x1) + xs.mean()), float(max(0, y1) + ys.mean())
 
     def describe(self) -> dict[str, Any]:
         return {"name": self.name, "kind": "classical-cv",
