@@ -1,0 +1,187 @@
+<title>车辆安全监测三路线</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F5F4F1; --surface:#FFFFFF; --surface-2:#EFEDE8;
+  --ink:#14161B; --ink-2:#3E434D; --muted:#6C7280;
+  --line:#DEDBD4; --line-strong:#C7C3B9;
+  --accent:#B4701A; --accent-soft:#F6E9D6;
+  --crit:#C0392F; --warn:#B4701A; --ok:#2C7A5A;
+  --shadow:0 1px 2px rgba(20,22,27,.06), 0 8px 24px -12px rgba(20,22,27,.14);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0D1015; --surface:#161A21; --surface-2:#1E232C;
+    --ink:#E9EBF0; --ink-2:#B8BEC9; --muted:#868D9A;
+    --line:#272D37; --line-strong:#39414E;
+    --accent:#E0A44A; --accent-soft:#2A2318;
+    --crit:#E2685C; --warn:#E0A44A; --ok:#4FAE83;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0D1015; --surface:#161A21; --surface-2:#1E232C;
+  --ink:#E9EBF0; --ink-2:#B8BEC9; --muted:#868D9A;
+  --line:#272D37; --line-strong:#39414E;
+  --accent:#E0A44A; --accent-soft:#2A2318;
+  --crit:#E2685C; --warn:#E0A44A; --ok:#4FAE83;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  font-size:15px; line-height:1.7; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:720px; margin:0 auto; padding:0 20px 72px}
+h1,h2,h3{font-family:Archivo,-apple-system,"PingFang SC",sans-serif; text-wrap:balance; margin:0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.eyebrow{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted)}
+
+/* ---- 顶部：仪表条，不做巨型 hero ---- */
+header{padding:36px 0 28px; border-bottom:1px solid var(--line)}
+h1{font-size:27px; font-weight:700; letter-spacing:-.015em; line-height:1.25; margin:10px 0 12px}
+.lede{color:var(--ink-2); font-size:15px; max-width:42em}
+.status-strip{display:flex; flex-wrap:wrap; gap:8px; margin-top:18px}
+.chip{font-family:"IBM Plex Mono",monospace; font-size:11.5px; padding:4px 9px;
+  border:1px solid var(--line-strong); border-radius:4px; color:var(--ink-2); background:var(--surface)}
+.chip b{color:var(--accent); font-weight:500}
+
+section{padding:32px 0; border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+h2{font-size:19px; font-weight:600; letter-spacing:-.01em; margin-bottom:6px}
+.sub{color:var(--muted); font-size:13.5px; margin-bottom:20px}
+p{margin:0 0 14px}
+
+/* ---- 能力边界警示块：用仪表盘警示灯的语言 ---- */
+.notice{background:var(--surface); border:1px solid var(--line-strong);
+  border-radius:6px; padding:16px 18px; display:flex; gap:13px; align-items:flex-start}
+.notice .lamp{width:9px; height:9px; border-radius:50%; background:var(--warn); flex:none; margin-top:8px;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent)}
+.notice p{margin:0; font-size:14px; color:var(--ink-2)}
+.notice strong{color:var(--ink)}
+
+/* ---- 路线卡片 ---- */
+.routes{display:flex; flex-direction:column; gap:14px}
+.route{background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  padding:18px; box-shadow:var(--shadow)}
+.route-head{display:flex; align-items:baseline; gap:10px; margin-bottom:4px}
+.code{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:500;
+  color:var(--accent); letter-spacing:.06em}
+.route h3{font-size:16.5px; font-weight:600; letter-spacing:-.01em}
+.route .pos{color:var(--ink-2); font-size:14px; margin:8px 0 14px}
+.metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line);
+  border:1px solid var(--line); border-radius:5px; overflow:hidden; margin-bottom:14px}
+.metric{background:var(--surface-2); padding:9px 10px}
+.metric .k{font-size:10.5px; color:var(--muted); font-family:"IBM Plex Mono",monospace;
+  letter-spacing:.05em; text-transform:uppercase}
+.metric .v{font-family:"IBM Plex Mono",monospace; font-size:13.5px; font-weight:500;
+  color:var(--ink); font-variant-numeric:tabular-nums; margin-top:2px}
+.cta{display:inline-flex; align-items:center; gap:7px; font-family:Archivo,sans-serif;
+  font-size:14px; font-weight:600; color:var(--ground); background:var(--ink);
+  padding:10px 16px; border-radius:5px; text-decoration:none; border:1px solid var(--ink)}
+.cta:hover{background:var(--accent); border-color:var(--accent); color:#fff}
+.cta:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.cta.ghost{background:transparent; color:var(--ink); border-color:var(--line-strong)}
+.cta.ghost:hover{background:var(--surface-2); color:var(--ink); border-color:var(--accent)}
+
+/* ---- 表格：窄屏横滑 ---- */
+.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line);
+  border-radius:6px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; min-width:540px; font-size:13.5px}
+th,td{text-align:left; padding:10px 13px; border-bottom:1px solid var(--line); vertical-align:top}
+thead th{background:var(--surface-2); font-family:"IBM Plex Mono",monospace; font-size:11px;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:500; white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+th.rowhead{font-weight:500; color:var(--ink-2); white-space:nowrap}
+
+/* ---- 告警分级：三色警示灯 ---- */
+.levels{display:flex; flex-direction:column; gap:1px; background:var(--line);
+  border:1px solid var(--line); border-radius:6px; overflow:hidden}
+.level{background:var(--surface); padding:13px 15px; display:flex; gap:12px; align-items:flex-start}
+.lamp-sm{width:8px; height:8px; border-radius:50%; flex:none; margin-top:7px}
+.level .name{font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.06em;
+  color:var(--muted); width:64px; flex:none; padding-top:1px}
+.level .desc{font-size:13.5px; color:var(--ink-2)}
+.level .desc b{color:var(--ink); font-weight:600}
+
+footer{padding:30px 0 0; color:var(--muted); font-size:12.5px; border-top:1px solid var(--line)}
+footer a{color:var(--ink-2)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">发车前安全检查 · 技术路线评估</div>
+  <h1>车辆安全监测：三条技术路线的并行验证</h1>
+  <p class="lede">甲方需求尚未定型，因此不押注单一路线。三条路线各自实现到可运行、可演示，
+     并共用同一套事件与告警契约，使它们的产出可以逐条对比、随时切换、也可以混合部署。</p>
+  <div class="status-strip">
+    <span class="chip">违规类型 <b>14</b></span>
+    <span class="chip">告警等级 <b>3</b></span>
+    <span class="chip">契约层测试 <b>19 通过</b></span>
+  </div>
+</header>
+
+<section>
+  <h2>需求拆成了什么</h2>
+  <p class="sub">三项需求对应的检测能力与信号来源</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>需求</th><th>检测能力</th><th>信号来源</th></tr></thead>
+    <tbody>
+      <tr><th class="rowhead">(a) 驾驶员</th>
+          <td>未系安全带、疲劳（闭眼／哈欠／点头）、分心、打电话、抽烟、双手脱离方向盘</td>
+          <td>舱内摄像头 DMS</td></tr>
+      <tr><th class="rowhead">(a) 超速</th>
+          <td>超速、急加速／急刹</td>
+          <td>OBD／CAN／GPS</td></tr>
+      <tr><th class="rowhead">(b) 乘坐人员</th>
+          <td>乘客未系安全带、超员、儿童坐副驾</td>
+          <td>舱内摄像头 OMS</td></tr>
+      <tr><th class="rowhead">(c) 警告机制</th>
+          <td>车内提醒当事人 ＋ 后台告警管理者，双通道</td>
+          <td>统一事件总线</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>必须先说清的边界</h2>
+  <div class="notice">
+    <span class="lamp"></span>
+    <p><strong>超速无法从图像判断。</strong>任何"看图识别超速"的说法都不成立。超速判定必须接入
+       OBD-II／CAN 总线／GPS 测速，再与电子地图限速比对。三条路线在这点上没有差别，
+       差别只在于该信号是在车端还是云端被消费。</p>
+  </div>
+</section>
+
+<section>
+  <h2>告警机制</h2>
+  <p class="sub">车内按严重度分级，避免打扰疲劳；后台无论等级一律留痕</p>
+  <div class="levels">
+    <div class="level"><span class="lamp-sm" style="background:var(--ok)"></span>
+      <span class="name">INFO</span>
+      <span class="desc"><b>不打扰驾驶员</b>，后台仍然记录</span></div>
+    <div class="level"><span class="lamp-sm" style="background:var(--warn)"></span>
+      <span class="name">WARN</span>
+      <span class="desc"><b>语音提醒一次</b> ＋ 黄色横幅，后台记录并计入统计</span></div>
+    <div class="level"><span class="lamp-sm" style="background:var(--crit)"></span>
+      <span class="name">CRITICAL</span>
+      <span class="desc"><b>语音循环 ＋ 蜂鸣</b> ＋ 红色横幅，后台实时推送管理员</span></div>
+  </div>
+  <p style="margin-top:16px; color:var(--ink-2); font-size:14px">
+    播报文案刻意写成短句加动作——"请就近停车休息"，而不是"检测到疲劳驾驶行为"。
+    行车中驾驶员没有解析长句的余裕。后台通道内置断网落盘补传，隧道和地库断网是车载常态。</p>
+</section>
+
+<footer>
+  <p>代码仓库 <span class="mono">BUG423/vehicle-safety-monitoring</span>　·　
+     三条路线共用 <span class="mono">common/</span> 契约层，感知层可替换</p>
+</footer>
+</div>
