@@ -1,8 +1,859 @@
-<title>模式 C 演示准备中</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#EEF1F6;color:#0B0D12;
-font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;text-align:center;padding:24px}
-@media(prefers-color-scheme:dark){body{background:#0A0B0E;color:#F2F3F5}}
-a{color:#007AFF;text-decoration:none}</style>
-<div><p style="font-size:17px">该演示页尚未合入</p>
-<p><a href="index.html">‹ 返回</a></p></div>
+<title>模式C 车载嵌入式</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}</script>
+<style>
+/* ==========================================================================
+   模式C · 车载嵌入式 —— 手机演示页
+   Apple 磨砂玻璃风格。单文件自包含：无外部 CDN / 图片 / 字体，CSS 与 JS 全部内联。
+   页面本身不发起任何网络请求 —— 这正是这条路线要演示的「边缘侧自治」。
+   ========================================================================== */
+:root{
+  --bg-1:#eef1f6; --bg-2:#dee6f1; --bg-3:#e9e2f3;
+  --glass:rgba(255,255,255,.62);
+  --glass-2:rgba(255,255,255,.42);
+  --stroke:rgba(255,255,255,.55);
+  --hair:rgba(10,20,40,.08);
+  --ink:#10131a;
+  --ink-2:rgba(16,19,26,.62);
+  --ink-3:rgba(16,19,26,.40);
+  --accent:#0a84ff;
+  --ok:#2f9e68;
+  --warn:#cf7c08;
+  --crit:#e0484d;
+  --shadow:0 8px 32px rgba(15,25,50,.10), 0 1px 2px rgba(15,25,50,.05);
+  --r-lg:22px; --r-md:16px; --r-sm:11px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg-1:#0b0d12; --bg-2:#121823; --bg-3:#181528;
+    --glass:rgba(28,32,42,.56);
+    --glass-2:rgba(255,255,255,.06);
+    --stroke:rgba(255,255,255,.14);
+    --hair:rgba(255,255,255,.09);
+    --ink:#f2f4f8;
+    --ink-2:rgba(242,244,248,.62);
+    --ink-3:rgba(242,244,248,.38);
+    --accent:#3d9bff;
+    --ok:#43ca8b;
+    --warn:#f0a92a;
+    --crit:#ff6b6f;
+    --shadow:0 8px 32px rgba(0,0,0,.42), 0 1px 2px rgba(0,0,0,.30);
+  }
+}
+:root[data-theme="dark"]{
+  --bg-1:#0b0d12; --bg-2:#121823; --bg-3:#181528;
+  --glass:rgba(28,32,42,.56);
+  --glass-2:rgba(255,255,255,.06);
+  --stroke:rgba(255,255,255,.14);
+  --hair:rgba(255,255,255,.09);
+  --ink:#f2f4f8;
+  --ink-2:rgba(242,244,248,.62);
+  --ink-3:rgba(242,244,248,.38);
+  --accent:#3d9bff;
+  --ok:#43ca8b;
+  --warn:#f0a92a;
+  --crit:#ff6b6f;
+  --shadow:0 8px 32px rgba(0,0,0,.42), 0 1px 2px rgba(0,0,0,.30);
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;
+  color:var(--ink);
+  background:var(--bg-1);
+  -webkit-font-smoothing:antialiased;
+  line-height:1.5;
+  min-height:100vh;
+  padding:max(16px,env(safe-area-inset-top)) 14px max(30px,env(safe-area-inset-bottom));
+  position:relative;
+}
+/* 柔和背景光晕：纯 CSS 渐变，无图片 */
+body::before{
+  content:"";position:fixed;inset:-20%;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(46% 38% at 16% 6%, var(--bg-3) 0%, transparent 62%),
+    radial-gradient(52% 44% at 90% 20%, var(--bg-2) 0%, transparent 66%),
+    radial-gradient(64% 52% at 50% 106%, var(--bg-2) 0%, transparent 70%),
+    var(--bg-1);
+}
+.wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:13px}
+
+/* ---------- 玻璃卡片 ---------- */
+.card{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  backdrop-filter:blur(20px) saturate(180%);
+  border:1px solid var(--stroke);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow);
+  padding:16px 17px;
+}
+.card.flush{padding:0;overflow:hidden}
+
+h1{font-size:21px;line-height:1.24;letter-spacing:-.022em;margin:0;font-weight:650}
+h2{font-size:11.5px;margin:0 0 12px;font-weight:640;letter-spacing:.06em;color:var(--ink-3);
+   text-transform:uppercase}
+h2 em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:500}
+p{margin:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;
+  background:var(--glass-2);padding:1px 5px;border-radius:5px}
+.sub{font-size:13px;color:var(--ink-2);margin-top:5px}
+.tiny{font-size:11.5px;color:var(--ink-3);line-height:1.6}
+
+.head{display:flex;align-items:center;gap:12px}
+.mark{width:40px;height:40px;flex:0 0 40px;border-radius:12px;
+  background:linear-gradient(145deg,var(--accent),#6a5cff);
+  display:grid;place-items:center;box-shadow:0 4px 14px rgba(10,132,255,.30)}
+.mark svg{width:22px;height:22px;display:block}
+
+/* ---------- 诚实标注 ---------- */
+.legend{display:flex;flex-direction:column;gap:10px}
+.lrow{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.55}
+.pill{flex:0 0 auto;font-size:10px;font-weight:660;letter-spacing:.04em;
+  padding:2.5px 8px;border-radius:99px;border:1px solid var(--hair);
+  background:var(--glass-2);white-space:nowrap;margin-top:1px}
+.pill.real{color:var(--ok)}
+.pill.sim{color:var(--warn)}
+.pill.none{color:var(--ink-3)}
+
+/* ---------- 视频舞台 ---------- */
+.stage{position:relative;aspect-ratio:4/3;background:#05070c;display:block}
+.stage video,.stage canvas.view{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;display:block}
+.stage video{transform:scaleX(-1)}
+.badge{position:absolute;left:11px;top:11px;z-index:3;font-size:11px;font-weight:600;
+  padding:5px 10px;border-radius:99px;background:rgba(12,16,24,.42);color:#fff;
+  border:1px solid rgba(255,255,255,.20);
+  -webkit-backdrop-filter:blur(14px) saturate(180%);backdrop-filter:blur(14px) saturate(180%);
+  display:flex;align-items:center;gap:6px}
+.badge .dot{width:6px;height:6px;border-radius:99px;background:var(--ok)}
+.badge.off .dot{background:rgba(255,255,255,.35)}
+.hud{position:absolute;right:11px;top:11px;z-index:3;font-size:10.5px;
+  font-variant-numeric:tabular-nums;padding:6px 9px;border-radius:12px;color:#fff;
+  background:rgba(12,16,24,.42);border:1px solid rgba(255,255,255,.18);
+  -webkit-backdrop-filter:blur(14px) saturate(180%);backdrop-filter:blur(14px) saturate(180%);
+  text-align:right;line-height:1.7}
+.placeholder{position:absolute;inset:0;z-index:2;display:grid;place-items:center;
+  text-align:center;padding:26px;color:rgba(255,255,255,.70);font-size:13px;line-height:1.65}
+.placeholder strong{display:block;color:#fff;font-size:15px;margin-bottom:7px;font-weight:600}
+.banner{position:absolute;left:0;right:0;bottom:0;z-index:4;padding:11px 14px;
+  font-size:13.5px;font-weight:600;color:#fff;background:rgba(224,72,77,.74);
+  -webkit-backdrop-filter:blur(16px) saturate(180%);backdrop-filter:blur(16px) saturate(180%);
+  transform:translateY(100%);transition:transform .28s cubic-bezier(.3,.8,.3,1)}
+.banner.show{transform:translateY(0)}
+.banner.warn{background:rgba(207,124,8,.74)}
+
+/* ---------- 控件 ---------- */
+.btn{appearance:none;-webkit-appearance:none;border:1px solid var(--hair);
+  border-radius:var(--r-sm);background:var(--glass-2);color:var(--ink);
+  font:inherit;font-size:13px;font-weight:550;padding:11px 13px;cursor:pointer;width:100%;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  transition:transform .12s ease, opacity .15s ease;touch-action:manipulation}
+.btn:active{transform:scale(.975)}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff;
+  box-shadow:0 4px 14px rgba(10,132,255,.28)}
+.btn:disabled{opacity:.42;cursor:default}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 0;border-top:1px solid var(--hair)}
+.switch .lbl{font-size:13.5px;font-weight:550}
+.switch .hint{font-size:11.5px;color:var(--ink-3);margin-top:2px;line-height:1.45}
+.toggle{position:relative;flex:0 0 50px;width:50px;height:30px;border-radius:99px;
+  background:var(--hair);border:1px solid var(--hair);cursor:pointer;
+  transition:background .2s;touch-action:manipulation}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;
+  border-radius:99px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.28);
+  transition:transform .2s cubic-bezier(.3,.8,.3,1)}
+.toggle.on::after{transform:translateX(20px)}
+.toggle.on{border-color:transparent}
+#tglOffline.on{background:var(--crit)}
+#tglVoice.on{background:var(--ok)}
+
+input[type=range]{width:100%;accent-color:var(--accent);margin:8px 0 0}
+
+/* ---------- 指标 ---------- */
+.metric{display:flex;align-items:center;gap:10px;padding:6px 0}
+.metric .name{flex:0 0 76px;font-size:12.5px;color:var(--ink-2)}
+.metric .bar{flex:1;height:6px;border-radius:99px;background:var(--hair);overflow:hidden}
+.metric .bar i{display:block;height:100%;border-radius:99px;background:var(--accent);
+  width:0;transition:width .18s linear}
+.metric .val{flex:0 0 60px;text-align:right;font-size:12px;
+  font-variant-numeric:tabular-nums;color:var(--ink-2)}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.stat{background:var(--glass-2);border:1px solid var(--hair);border-radius:var(--r-md);
+  padding:12px 10px;text-align:center}
+.stat b{display:block;font-size:19px;font-weight:640;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
+.stat span{display:block;font-size:10.5px;color:var(--ink-3);margin-top:3px}
+.stat.hot b{color:var(--crit)}
+
+/* ---------- 事件流 ---------- */
+.events{display:flex;flex-direction:column;gap:8px;max-height:330px;overflow-y:auto;
+  -webkit-overflow-scrolling:touch}
+.ev{border:1px solid var(--hair);border-radius:var(--r-md);padding:10px 12px;
+  background:var(--glass-2);display:flex;gap:10px;align-items:stretch}
+.ev .sev{flex:0 0 3px;border-radius:99px;background:var(--warn)}
+.ev.critical .sev{background:var(--crit)}
+.ev.info .sev{background:var(--accent)}
+.ev .body{flex:1;min-width:0}
+.ev .t{font-size:13.5px;font-weight:600;letter-spacing:-.01em;
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ev .m{font-size:11px;color:var(--ink-2);margin-top:4px;word-break:break-all;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.5}
+.ev .q{font-size:10.5px;color:var(--ink-3);margin-top:4px;font-variant-numeric:tabular-nums}
+.empty{font-size:12.5px;color:var(--ink-3);text-align:center;padding:24px 0}
+
+footer{text-align:center;font-size:11px;color:var(--ink-3);padding:4px 4px 0;line-height:1.65}
+</style>
+
+<div class="wrap">
+
+  <!-- ================= 标题 ================= -->
+  <div class="card">
+    <div class="head">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2.5" y="6.5" width="19" height="11" rx="3"></rect>
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M6 6.5 7.2 4h9.6L18 6.5"></path>
+        </svg>
+      </div>
+      <div>
+        <h1>模式C · 车载嵌入式</h1>
+        <p class="sub">把这台手机当作装在车上的检测设备</p>
+      </div>
+    </div>
+    <p class="tiny" style="margin-top:13px">
+      这条路线的主张是<b>边缘侧自治</b>：采集、判定、提醒全部在设备本地完成，不依赖网络。
+      本页把手机当成车载设备来演示这一点 ——
+      <b>整个页面不发起任何网络请求，画面不离开这台手机</b>。
+    </p>
+  </div>
+
+  <!-- ================= 诚实标注 ================= -->
+  <div class="card">
+    <h2>哪些是真的，哪些是模拟</h2>
+    <div class="legend">
+      <div class="lrow"><span class="pill real">真实</span>
+        <span>摄像头本地采集，逐帧在页面里真算亮度、清晰度（拉普拉斯方差）、
+              帧间运动量、人像区域面积与质心。</span></div>
+      <div class="lrow"><span class="pill real">真实</span>
+        <span><b>镜头遮挡检测</b> —— 用手挡住摄像头，清晰度相对自身基线塌陷，会真的触发告警。
+              这是最值得亲手试一下的一项。</span></div>
+      <div class="lrow"><span class="pill real">真实</span>
+        <span><b>防误报确认状态机</b> —— 从 <code>common/schema/confirmation.py</code>
+              移植的滑窗投票 + 最短持续时长 + 冷却 + 升级，参数与车端完全一致。</span></div>
+      <div class="lrow"><span class="pill real">真实</span>
+        <span>本地语音播报（<code>speechSynthesis</code>）、震动（<code>navigator.vibrate</code>）、
+              断网时事件进本地队列、恢复后补传。</span></div>
+      <div class="lrow"><span class="pill sim">模拟</span>
+        <span><b>疲劳 / 安全带 / 手机</b> 需要神经网络模型，浏览器里没有加载模型，
+              改由下方按钮手动注入信号。这类事件会标 <b>模拟</b>。</span></div>
+      <div class="lrow"><span class="pill sim">模拟</span>
+        <span><b>车速</b> 来自滑块，代替 OBD-II / CAN 总线。超速判定本身是真算的 ——
+              <b>超速无法从图像判断，必须接车辆信号</b>。</span></div>
+      <div class="lrow"><span class="pill none">非真实网络</span>
+        <span><b>后台</b> 是页面内的模拟端点。本页不发任何网络请求，
+              「已送达 / 待补传」演示的是队列语义，不是真实上行链路。</span></div>
+    </div>
+  </div>
+
+  <!-- ================= 摄像头 ================= -->
+  <div class="card flush">
+    <div class="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <canvas class="view" id="fallbackView" style="display:none"></canvas>
+      <div class="badge off" id="camBadge"><span class="dot"></span><span id="camText">摄像头未开启</span></div>
+      <div class="hud" id="hud" style="display:none"></div>
+      <div class="placeholder" id="placeholder">
+        <div>
+          <strong>需要摄像头权限</strong>
+          点击下方「开启本地采集」。<br>
+          拒绝授权也能继续 —— 会切到内置合成画面，
+          同一套处理流水线照常运行。
+        </div>
+      </div>
+      <div class="banner" id="banner"></div>
+    </div>
+  </div>
+
+  <!-- ================= 控制 ================= -->
+  <div class="card">
+    <h2>控制</h2>
+    <div class="grid2">
+      <button class="btn primary" id="btnStart">开启本地采集</button>
+      <button class="btn" id="btnFallback">用合成画面</button>
+    </div>
+
+    <div class="switch" style="margin-top:6px">
+      <div>
+        <div class="lbl">模拟断网</div>
+        <div class="hint">断开后台通道。车内语音提醒不受影响。</div>
+      </div>
+      <div class="toggle" id="tglOffline" role="switch" aria-checked="false" tabindex="0"
+           aria-label="模拟断网"></div>
+    </div>
+
+    <div class="switch">
+      <div>
+        <div class="lbl">语音 + 震动提醒</div>
+        <div class="hint">车内提醒通道，完全在本地</div>
+      </div>
+      <div class="toggle on" id="tglVoice" role="switch" aria-checked="true" tabindex="0"
+           aria-label="语音与震动提醒"></div>
+    </div>
+
+    <div style="padding-top:12px;border-top:1px solid var(--hair)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <span class="lbl" style="font-size:13.5px;font-weight:550">车速（模拟 OBD 信号）</span>
+        <span style="font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums"
+              id="speedTxt">0 km/h · 限速 60</span>
+      </div>
+      <input type="range" id="speed" min="0" max="120" step="1" value="0" aria-label="模拟车速">
+      <p class="tiny" style="margin-top:5px">超过限速 3% 且满足确认规则（5 秒窗口命中 80%、持续 3 秒）才告警。</p>
+    </div>
+  </div>
+
+  <!-- ================= 注入模拟违规 ================= -->
+  <div class="card">
+    <h2>注入模拟违规 <em>· 这几类需要模型，浏览器里没有</em></h2>
+    <div class="grid2">
+      <button class="btn" data-inject="driver.no_seatbelt">驾驶员未系安全带</button>
+      <button class="btn" data-inject="passenger.no_seatbelt">乘客未系安全带</button>
+      <button class="btn" data-inject="driver.fatigue">疲劳驾驶</button>
+      <button class="btn" data-inject="driver.phone_use">驾驶中使用手机</button>
+    </div>
+    <p class="tiny" style="margin-top:11px">
+      <b>按住不放</b>持续注入，松开信号消失。短按不会告警 ——
+      这正是防误报机制在起作用，可以自己试：未系安全带需要按住约 4 秒才会报。
+    </p>
+  </div>
+
+  <!-- ================= 实时信号 ================= -->
+  <div class="card">
+    <h2>本地实时信号 <em>· 逐帧真算</em></h2>
+    <div class="metric"><span class="name">清晰度</span><span class="bar"><i id="bSharp"></i></span><span class="val" id="vSharp">—</span></div>
+    <div class="metric"><span class="name">亮度</span><span class="bar"><i id="bLuma"></i></span><span class="val" id="vLuma">—</span></div>
+    <div class="metric"><span class="name">运动量</span><span class="bar"><i id="bMotion"></i></span><span class="val" id="vMotion">—</span></div>
+    <div class="metric"><span class="name">人像面积</span><span class="bar"><i id="bFace"></i></span><span class="val" id="vFace">—</span></div>
+    <div class="metric"><span class="name">头部横移</span><span class="bar"><i id="bYaw"></i></span><span class="val" id="vYaw">—</span></div>
+    <p class="tiny" style="margin-top:9px">
+      「人像面积 / 头部横移」用肤色像素占比与质心偏移代替人脸检测与关键点模型，是<b>粗略近似</b>：
+      够演示原理，达不到真实 DMS 精度。车端跑的是 YuNet + 106 点关键点，
+      实测 320×240 单线程两阶段合计 <b>9.6 ms</b>。
+    </p>
+  </div>
+
+  <!-- ================= 设备资源 ================= -->
+  <div class="card">
+    <h2>设备资源占用</h2>
+    <div class="stats">
+      <div class="stat"><b id="sFps">—</b><span>处理 FPS</span></div>
+      <div class="stat"><b id="sLat">—</b><span>单帧 ms</span></div>
+      <div class="stat"><b id="sMem">—</b><span>JS 堆 MB</span></div>
+    </div>
+    <div class="stats" style="margin-top:9px">
+      <div class="stat"><b id="sRes">160×120</b><span>处理分辨率</span></div>
+      <div class="stat"><b id="sUp">—</b><span>运行时长 s</span></div>
+      <div class="stat"><b id="sEv">0</b><span>累计事件</span></div>
+    </div>
+    <p class="tiny" style="margin-top:10px">
+      处理分辨率刻意压到 160×120、主循环限到 12 FPS —— 这正是嵌入式端的做法：
+      DMS 不需要高分辨率，限帧率是为了控温控功耗，在手机上同样省电。
+      JS 堆大小只有 Chromium 系浏览器提供，其他浏览器显示「—」。
+    </p>
+  </div>
+
+  <!-- ================= 上报队列 ================= -->
+  <div class="card">
+    <h2>后台上报 <em>· 断网落盘补传</em></h2>
+    <div class="stats">
+      <div class="stat"><b id="qSent">0</b><span>已送达后台</span></div>
+      <div class="stat" id="qBox"><b id="qPend">0</b><span>本地待补传</span></div>
+      <div class="stat"><b id="qLocal">0</b><span>本地存证</span></div>
+    </div>
+    <p class="tiny" style="margin-top:11px" id="netNote">
+      后台通道可达。事件产生后立即上报。
+    </p>
+  </div>
+
+  <!-- ================= 事件流 ================= -->
+  <div class="card">
+    <h2>本地事件流</h2>
+    <div class="events" id="events">
+      <div class="empty" id="evEmpty">还没有事件。开启采集后，用手挡住摄像头试试。</div>
+    </div>
+    <button class="btn" id="btnClear" style="margin-top:12px">清空</button>
+  </div>
+
+  <footer>
+    模式C · 车载嵌入式 —— 三条技术路线并行评估之一<br>
+    单文件自包含，不发起任何网络请求，画面不离开本机
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   1. 与 common/ 契约层保持一致的枚举与确认规则
+   ========================================================================== */
+var LABEL = {
+  "driver.no_seatbelt":"驾驶员未系安全带",
+  "driver.fatigue":"疲劳驾驶",
+  "driver.distraction":"驾驶员分心",
+  "driver.phone_use":"驾驶中使用手机",
+  "driver.absent":"驾驶位无人",
+  "passenger.no_seatbelt":"乘客未系安全带",
+  "vehicle.speeding":"车辆超速",
+  "system.camera_blocked":"摄像头异常"
+};
+var SEVERITY = {
+  "driver.no_seatbelt":"critical","driver.fatigue":"critical","driver.distraction":"warn",
+  "driver.phone_use":"critical","driver.absent":"info","passenger.no_seatbelt":"warn",
+  "vehicle.speeding":"critical","system.camera_blocked":"warn"
+};
+/* 播报文案：短句 + 可执行动作。行车中驾驶员没有解析长句的余裕。 */
+var SPEECH = {
+  "driver.no_seatbelt":"请系好安全带",
+  "passenger.no_seatbelt":"请提醒乘客系好安全带",
+  "driver.fatigue":"检测到疲劳，请就近停车休息",
+  "driver.distraction":"请注意前方道路",
+  "driver.phone_use":"行车中请勿使用手机",
+  "vehicle.speeding":"您已超速，请减速",
+  "system.camera_blocked":"摄像头异常，请检查遮挡",
+  "driver.absent":"驾驶位无人"
+};
+/* 与 common/schema/confirmation.py 的 DEFAULT_RULES 一一对应 */
+var RULES = {
+  "driver.fatigue":       {win:8, ratio:0.5, minDur:4.0, cool:60, esc:30,   rel:0.2},
+  "driver.distraction":   {win:4, ratio:0.7, minDur:3.0, cool:45, esc:null, rel:0.2},
+  "driver.no_seatbelt":   {win:3, ratio:0.7, minDur:2.0, cool:60, esc:20,   rel:0.2},
+  "passenger.no_seatbelt":{win:3, ratio:0.7, minDur:2.0, cool:90, esc:null, rel:0.2},
+  "driver.phone_use":     {win:4, ratio:0.6, minDur:2.5, cool:45, esc:null, rel:0.2},
+  "vehicle.speeding":     {win:5, ratio:0.8, minDur:3.0, cool:30, esc:15,   rel:0.2}
+};
+var FALLBACK_RULE = {win:3, ratio:0.6, minDur:2.0, cool:30, esc:60, rel:0.2};
+
+/* 防误报确认状态机 —— 滑窗投票 + 最短持续时长 + 冷却 + 升级 + 恢复确认。
+   单帧判定直接告警会产生大量误报（眨眼被判疲劳、抬手被判打电话），
+   车载场景里误报比漏报更致命：司机被打扰几次就会关掉系统。 */
+function Confirmer(){ this.st = {}; }
+Confirmer.prototype.rule = function(v){ return RULES[v] || FALLBACK_RULE; };
+Confirmer.prototype.update = function(v, hit, now, key){
+  key = key || "default";
+  var r = this.rule(v), id = v + "|" + key, s = this.st[id];
+  if(!s){ s = {samples:[], activeSince:null, lastReport:null, reported:false}; this.st[id] = s; }
+  s.samples.push([now, !!hit]);
+  while(s.samples.length && now - s.samples[0][0] > r.win) s.samples.shift();
+  var total = s.samples.length, hits = 0, i;
+  for(i = 0; i < total; i++) if(s.samples[i][1]) hits++;
+  var ratio = total ? hits / total : 0;
+  if(ratio >= r.ratio){ if(s.activeSince === null) s.activeSince = now; }
+  else if(ratio <= r.rel){ s.activeSince = null; s.reported = false; }
+  var active = s.activeSince !== null;
+  var dur = active ? now - s.activeSince : 0;
+  var sev = SEVERITY[v] || "warn";
+  if(active && r.esc && dur >= r.esc) sev = "critical";
+  var alert = false;
+  if(active && dur >= r.minDur){
+    var cooled = s.lastReport === null || (now - s.lastReport) >= r.cool;
+    if(!s.reported || cooled){ alert = true; s.reported = true; s.lastReport = now; }
+  }
+  return {alert:alert, active:active, dur:dur, ratio:ratio, sev:sev};
+};
+
+/* 个体自适应基线：滑窗高分位数。
+   用分位数而不是均值 —— 均值会被异常样本拉低，形成「越差越判不出」的反馈。 */
+function Baseline(win, q, warm){ this.win=win; this.q=q; this.warm=warm; this.buf=[]; this.t0=null; }
+Baseline.prototype.push = function(v, now){
+  if(this.t0 === null) this.t0 = now;
+  this.buf.push([now, v]);
+  while(this.buf.length && now - this.buf[0][0] > this.win) this.buf.shift();
+};
+Baseline.prototype.ready = function(){
+  return this.t0 !== null && this.buf.length > 4 &&
+         (this.buf[this.buf.length-1][0] - this.t0) >= this.warm;
+};
+Baseline.prototype.value = function(){
+  if(!this.buf.length) return null;
+  var a = this.buf.map(function(x){ return x[1]; }).sort(function(p,q){ return p-q; });
+  return a[Math.min(a.length-1, Math.round(this.q * (a.length-1)))];
+};
+
+/* ==========================================================================
+   2. 状态
+   ========================================================================== */
+var PROC_W = 160, PROC_H = 120;
+var S = {
+  running:false, source:null,
+  offline:false, voice:true,
+  stream:null,
+  prevGray:null,
+  t0:0, frames:0, lastFpsAt:0, fps:0, lat:0,
+  sent:0, pending:0, localStore:0, evCount:0,
+  injected:{},
+  speed:0, limit:60,
+  confirmer:new Confirmer(),
+  sharpBase:new Baseline(20, 0.85, 3),
+  synthT:0
+};
+function $(id){ return document.getElementById(id); }
+var video = $("video"), fbView = $("fallbackView");
+var work = document.createElement("canvas");
+work.width = PROC_W; work.height = PROC_H;
+var wctx = work.getContext("2d", {willReadFrequently:true});
+var synth = document.createElement("canvas");
+synth.width = 320; synth.height = 240;
+var sctx = synth.getContext("2d");
+
+/* ==========================================================================
+   3. 逐帧真实像素计算
+   ========================================================================== */
+function analyze(src){
+  wctx.drawImage(src, 0, 0, PROC_W, PROC_H);
+  var d = wctx.getImageData(0, 0, PROC_W, PROC_H).data;
+  var n = PROC_W * PROC_H;
+  var gray = new Float32Array(n);
+  var luma = 0, skin = 0, sx = 0, sy = 0, i, p;
+
+  for(i = 0, p = 0; i < n; i++, p += 4){
+    var r = d[p], g = d[p+1], b = d[p+2];
+    var y = 0.299*r + 0.587*g + 0.114*b;
+    gray[i] = y; luma += y;
+    /* YCbCr 肤色区间（经典阈值）。这是粗略近似，不是人脸检测。 */
+    var cb = 128 - 0.168736*r - 0.331264*g + 0.5*b;
+    var cr = 128 + 0.5*r - 0.418688*g - 0.081312*b;
+    if(cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && y > 45){
+      skin++; sx += (i % PROC_W); sy += (i / PROC_W) | 0;
+    }
+  }
+  luma /= n;
+
+  /* 拉普拉斯方差 —— 清晰度/遮挡判据，与车端 edge/analyzers.py 用的是同一个量 */
+  var lsum = 0, lsq = 0, cnt = 0, x;
+  for(y = 1; y < PROC_H-1; y++){
+    for(x = 1; x < PROC_W-1; x++){
+      i = y*PROC_W + x;
+      var v = 4*gray[i] - gray[i-1] - gray[i+1] - gray[i-PROC_W] - gray[i+PROC_W];
+      lsum += v; lsq += v*v; cnt++;
+    }
+  }
+  var mean = lsum/cnt;
+  var sharp = Math.max(0, lsq/cnt - mean*mean);
+
+  /* 帧间运动量（隔点采样，省算力 —— 嵌入式端的常规做法） */
+  var motion = 0;
+  if(S.prevGray){
+    var acc = 0;
+    for(i = 0; i < n; i += 2) acc += Math.abs(gray[i] - S.prevGray[i]);
+    motion = acc / (n/2);
+  }
+  S.prevGray = gray;
+
+  var faceRatio = skin / n;
+  var cx = skin > 0 ? (sx/skin)/PROC_W : 0.5;
+  var yaw = skin > n*0.01 ? Math.min(1, Math.abs(cx - 0.5) * 2) : 0;
+
+  return {luma:luma, sharp:sharp, motion:motion, faceRatio:faceRatio, yaw:yaw};
+}
+
+/* ==========================================================================
+   4. 判定 → 确认 → 双通道告警
+   ========================================================================== */
+function evaluate(m, now){
+  var out = [];
+
+  /* 真实：镜头遮挡。判据是清晰度相对自身历史基线塌陷 + 画面里看不到人。
+     不用绝对阈值 —— 素色背景的正常画面清晰度本来就低，会被误判。 */
+  S.sharpBase.push(m.sharp, now);
+  var base = S.sharpBase.value();
+  var blocked = (m.sharp < 1.2) ||
+    (S.sharpBase.ready() && base && m.sharp < base * 0.35 && m.faceRatio < 0.02);
+  out.push(["system.camera_blocked", blocked, "camera", true,
+    {sharpness:+m.sharp.toFixed(2), baseline:base ? +base.toFixed(2) : null,
+     face_ratio:+m.faceRatio.toFixed(4)}]);
+
+  /* 真实（粗略）：驾驶位无人 */
+  out.push(["driver.absent", m.faceRatio < 0.012 && !blocked, "driver", true,
+    {face_ratio:+m.faceRatio.toFixed(4)}]);
+
+  /* 真实（粗略）：分心 = 人像质心横向偏移过大 */
+  out.push(["driver.distraction", m.faceRatio > 0.02 && m.yaw > 0.42, "driver", true,
+    {head_offset:+m.yaw.toFixed(3), note:"用肤色质心偏移代替头部姿态"}]);
+
+  /* 真实计算、模拟输入：超速 */
+  out.push(["vehicle.speeding", S.speed > S.limit * 1.03, "vehicle", false,
+    {speed_kmh:S.speed, speed_limit_kmh:S.limit, source:"simulated_obd"}]);
+
+  /* 模拟：需要模型的四类 */
+  var need = ["driver.no_seatbelt","passenger.no_seatbelt","driver.fatigue","driver.phone_use"];
+  for(var k = 0; k < need.length; k++){
+    var v = need[k];
+    var key = v.indexOf("passenger") === 0 ? "front_passenger" : "driver";
+    out.push([v, !!S.injected[v], key, false, {source:"manual_injection"}]);
+  }
+  return out;
+}
+
+function emit(v, c, real, signals){
+  S.evCount++;
+  var ev = {
+    violation:v, vehicle_id:"演示车 · 本机", mode:"mode_c_edge",
+    severity:c.sev, confidence:+c.ratio.toFixed(2), duration_s:+c.dur.toFixed(1),
+    message:LABEL[v] || v, real:real, ts:Date.now(), raw_signals:signals
+  };
+  ev.raw_signals.detection_site = "edge_device";
+  S.localStore++;          /* 本地存证：无论有没有网都先写本地 */
+  inCabinAlert(ev);        /* 车内通道：不经过网络 */
+  reportBackend(ev);       /* 后台通道：断网则进队列 */
+  renderEvent(ev);
+  $("sEv").textContent = S.evCount;
+  refreshQueue();
+}
+
+function inCabinAlert(ev){
+  var text = SPEECH[ev.violation] || ev.message;
+  showBanner(text, ev.severity);
+  if(!S.voice) return;
+  try{
+    if(window.speechSynthesis){
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = "zh-CN"; u.rate = 1.05;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }
+  }catch(e){ /* 播报失败不能中断检测主循环 */ }
+  try{
+    if(navigator.vibrate) navigator.vibrate(ev.severity === "critical" ? [140,70,140] : [90]);
+  }catch(e){}
+}
+
+function reportBackend(ev){
+  if(S.offline) S.pending++;
+  else S.sent++;
+}
+function flushPending(){
+  if(S.offline || !S.pending) return;
+  var n = S.pending;
+  S.sent += n; S.pending = 0;
+  showBanner("网络恢复，已补传 " + n + " 条事件", "warn");
+  refreshQueue();
+}
+
+/* ==========================================================================
+   5. 渲染
+   ========================================================================== */
+var bannerTimer = 0;
+function showBanner(text, sev){
+  var b = $("banner");
+  b.textContent = text;
+  if(sev === "critical") b.classList.remove("warn"); else b.classList.add("warn");
+  b.classList.add("show");
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(function(){ b.classList.remove("show"); }, 3400);
+}
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+  });
+}
+function renderEvent(ev){
+  var box = $("events"), empty = $("evEmpty");
+  if(empty && empty.parentNode) empty.parentNode.removeChild(empty);
+  var d = document.createElement("div");
+  d.className = "ev " + ev.severity;
+  var time = new Date(ev.ts).toLocaleTimeString("zh-CN", {hour12:false});
+  var tag = ev.real ? '<span class="pill real">真实</span>' : '<span class="pill sim">模拟</span>';
+  d.innerHTML =
+    '<span class="sev"></span><div class="body">' +
+    '<div class="t">' + esc(LABEL[ev.violation] || ev.violation) + tag + '</div>' +
+    '<div class="m">' + esc(JSON.stringify(ev.raw_signals)) + '</div>' +
+    '<div class="q">' + time + ' · ' + ev.severity + ' · 持续 ' + ev.duration_s +
+    's · 置信 ' + ev.confidence + ' · ' + (S.offline ? '进本地队列' : '已上报') + '</div>' +
+    '</div>';
+  box.insertBefore(d, box.firstChild);
+  while(box.children.length > 40) box.removeChild(box.lastChild);
+}
+function bar(id, vid, ratio, text){
+  $(id).style.width = Math.max(0, Math.min(100, ratio*100)).toFixed(0) + "%";
+  $(vid).textContent = text;
+}
+function refreshQueue(){
+  $("qSent").textContent = S.sent;
+  $("qPend").textContent = S.pending;
+  $("qLocal").textContent = S.localStore;
+  if(S.pending > 0) $("qBox").classList.add("hot"); else $("qBox").classList.remove("hot");
+  $("netNote").textContent = S.offline
+    ? "后台通道不可达。事件正在写入本地队列，车内语音提醒不受影响 —— 它根本不经过网络。"
+    : "后台通道可达。事件产生后立即上报。";
+}
+
+/* ==========================================================================
+   6. 主循环
+   ========================================================================== */
+function drawSynthetic(){
+  /* 降级路径：内置合成画面，喂给同一套处理流水线 */
+  var t = S.synthT += 0.045;
+  var g = sctx.createLinearGradient(0, 0, 0, 240);
+  g.addColorStop(0, "#2b3242"); g.addColorStop(1, "#161a22");
+  sctx.fillStyle = g; sctx.fillRect(0, 0, 320, 240);
+  sctx.fillStyle = "#1d2129"; sctx.fillRect(0, 178, 320, 62);
+  var cx = 150 + Math.sin(t*0.7) * 34;
+  sctx.fillStyle = "#c9a68a";
+  sctx.beginPath(); sctx.ellipse(cx, 104, 40, 50, 0, 0, Math.PI*2); sctx.fill();
+  sctx.fillStyle = "#7d8aa8";
+  sctx.beginPath(); sctx.ellipse(cx, 214, 74, 58, 0, Math.PI, Math.PI*2); sctx.fill();
+  var blink = Math.sin(t*3.1) > 0.94;
+  sctx.fillStyle = blink ? "#8c7361" : "#f4f6fa";
+  var eyes = [cx-15, cx+15];
+  for(var i = 0; i < 2; i++){
+    sctx.beginPath();
+    sctx.ellipse(eyes[i], 96, 8, blink ? 1.6 : 5, 0, 0, Math.PI*2);
+    sctx.fill();
+  }
+  sctx.fillStyle = "rgba(255,255,255,.34)";
+  sctx.font = '11px -apple-system, sans-serif';
+  sctx.fillText("合成画面 · 无摄像头权限时的降级路径", 10, 18);
+  if(fbView.width !== 320){ fbView.width = 320; fbView.height = 240; }
+  fbView.getContext("2d").drawImage(synth, 0, 0);
+}
+
+function loop(){
+  if(!S.running) return;
+  var t0 = performance.now();
+  var src = null;
+  if(S.source === "camera" && video.readyState >= 2) src = video;
+  else if(S.source === "synthetic"){ drawSynthetic(); src = synth; }
+
+  if(src){
+    var now = performance.now() / 1000;
+    var m = analyze(src);
+    var rows = evaluate(m, now);
+    for(var i = 0; i < rows.length; i++){
+      var c = S.confirmer.update(rows[i][0], rows[i][1], now, rows[i][2]);
+      if(c.alert) emit(rows[i][0], c, rows[i][3], rows[i][4]);
+    }
+    bar("bSharp","vSharp", Math.min(1, m.sharp/900), m.sharp.toFixed(0));
+    bar("bLuma","vLuma", m.luma/255, m.luma.toFixed(0));
+    bar("bMotion","vMotion", Math.min(1, m.motion/24), m.motion.toFixed(1));
+    bar("bFace","vFace", Math.min(1, m.faceRatio/0.35), (m.faceRatio*100).toFixed(1) + "%");
+    bar("bYaw","vYaw", m.yaw, m.yaw.toFixed(2));
+
+    S.frames++;
+    S.lat = S.lat * 0.85 + (performance.now() - t0) * 0.15;
+    var nowMs = performance.now();
+    if(nowMs - S.lastFpsAt >= 500){
+      S.fps = S.frames * 1000 / (nowMs - S.lastFpsAt);
+      S.frames = 0; S.lastFpsAt = nowMs;
+      $("sFps").textContent = S.fps.toFixed(1);
+      $("sLat").textContent = S.lat.toFixed(1);
+      $("sUp").textContent = ((nowMs - S.t0)/1000).toFixed(0);
+      if(window.performance && performance.memory){
+        $("sMem").textContent = (performance.memory.usedJSHeapSize/1048576).toFixed(0);
+      }
+      $("hud").innerHTML = S.fps.toFixed(1) + " fps<br>" + S.lat.toFixed(1) +
+                          " ms/帧<br>" + PROC_W + "×" + PROC_H;
+    }
+  }
+  /* 限帧到约 12 FPS：嵌入式端主动让出 CPU 控温控功耗，手机上同样省电 */
+  setTimeout(function(){ requestAnimationFrame(loop); }, 1000/12);
+}
+
+/* ==========================================================================
+   7. 启动与交互
+   ========================================================================== */
+function begin(){
+  if(S.running) return;
+  S.running = true;
+  S.t0 = performance.now();
+  S.lastFpsAt = performance.now();
+  S.frames = 0;
+  $("hud").style.display = "block";
+  $("btnStart").textContent = "采集中";
+  $("btnStart").disabled = true;
+  loop();
+}
+function startSynthetic(note){
+  S.source = "synthetic";
+  video.style.display = "none";
+  fbView.style.display = "block";
+  $("placeholder").style.display = "none";
+  $("camBadge").classList.remove("off");
+  $("camText").textContent = "合成画面 · 降级路径";
+  if(note) showBanner(note, "warn");
+  begin();
+}
+function startCamera(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    startSynthetic("此浏览器不支持摄像头接口，已切到合成画面");
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"user", width:{ideal:640}, height:{ideal:480}}, audio:false
+  }).then(function(stream){
+    S.stream = stream;
+    video.srcObject = stream;
+    var p = video.play();
+    if(p && p.catch) p.catch(function(){});
+    S.source = "camera";
+    video.style.display = "block";
+    fbView.style.display = "none";
+    $("placeholder").style.display = "none";
+    $("camBadge").classList.remove("off");
+    $("camText").textContent = "本地采集中 · 画面不出本机";
+    begin();
+  }).catch(function(err){
+    startSynthetic("摄像头不可用（" + ((err && err.name) || "未知") + "），已切到合成画面");
+  });
+}
+
+$("btnStart").addEventListener("click", startCamera);
+$("btnFallback").addEventListener("click", function(){ startSynthetic(null); });
+$("btnClear").addEventListener("click", function(){
+  $("events").innerHTML = '<div class="empty" id="evEmpty">已清空。</div>';
+});
+
+function bindToggle(el, get, set){
+  function flip(){
+    set(!get());
+    if(get()) el.classList.add("on"); else el.classList.remove("on");
+    el.setAttribute("aria-checked", get() ? "true" : "false");
+  }
+  el.addEventListener("click", flip);
+  el.addEventListener("keydown", function(e){
+    if(e.key === " " || e.key === "Enter"){ e.preventDefault(); flip(); }
+  });
+}
+bindToggle($("tglOffline"), function(){ return S.offline; }, function(v){
+  S.offline = v;
+  if(v) showBanner("已模拟断网。车内提醒继续工作。", "warn"); else flushPending();
+  refreshQueue();
+});
+bindToggle($("tglVoice"), function(){ return S.voice; }, function(v){ S.voice = v; });
+
+$("speed").addEventListener("input", function(e){
+  S.speed = +e.target.value;
+  $("speedTxt").textContent = S.speed + " km/h · 限速 " + S.limit;
+});
+
+/* 注入按钮：按住持续注入，松开信号消失 —— 短按不会告警，可以亲手验证防误报 */
+var injectBtns = document.querySelectorAll("[data-inject]");
+for(var bi = 0; bi < injectBtns.length; bi++){
+  (function(btn){
+    var v = btn.getAttribute("data-inject");
+    function on(e){ e.preventDefault(); S.injected[v] = true; btn.style.opacity = ".55"; }
+    function off(){ delete S.injected[v]; btn.style.opacity = ""; }
+    btn.addEventListener("pointerdown", on);
+    btn.addEventListener("pointerup", off);
+    btn.addEventListener("pointerleave", off);
+    btn.addEventListener("pointercancel", off);
+  })(injectBtns[bi]);
+}
+
+refreshQueue();
+</script>
