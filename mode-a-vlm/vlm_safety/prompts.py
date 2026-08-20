@@ -30,25 +30,40 @@ AGE_GROUPS = ["adult", "child", "unknown"]
 IMAGE_QUALITY = ["good", "dark", "blurry", "overexposed", "lens_blocked", "unknown"]
 VIEWS = ["cabin_front", "cabin_rear", "exterior", "not_a_vehicle_cabin", "unknown"]
 
+def _enum(values: list[str]) -> str:
+    """把枚举渲染成 ``"a|b|c"`` 形式的**字符串**。
+
+    这里踩过一个真实的坑：最早 schema 里把枚举直接写成 JSON 数组
+    （``"view": ["cabin_front", "cabin_rear", ...]``）。Qwen3-VL-32B 与 GLM-4.5V
+    会把它当成「这个字段的值就是一个数组」，原样回填 ``"view": ["cabin_front"]``，
+    于是每个字段都被白名单判为越界、全部降级 unknown —— 在验证集上表现为
+    「大模型还不如小模型」。8B 恰好没犯这个错，差距完全是 schema 呈现方式造成的假象。
+
+    改成竖线分隔的字符串后，模型不再有「这里应该填数组」的错觉。
+    解析器同时也做了单元素数组的兼容（见 parser._unwrap），双保险。
+    """
+    return "|".join(values)
+
+
 # 输出 JSON 的形状说明（同时作为给模型看的 schema 和给解析器用的白名单来源）
 OUTPUT_SCHEMA: dict = {
     "scene": {
-        "view": VIEWS,
-        "image_quality": IMAGE_QUALITY,
+        "view": _enum(VIEWS),
+        "image_quality": _enum(IMAGE_QUALITY),
         "persons_visible": "整数，画面中可见的人数",
     },
     "occupants": [
         {
-            "seat": SEATS,
-            "person_present": "true/false",
-            "apparent_age_group": AGE_GROUPS,
-            "seatbelt": {"state": SEATBELT_STATES, "evidence": "字符串", "confidence": "0~1"},
-            "eyes": {"state": EYE_STATES, "evidence": "字符串", "confidence": "0~1"},
-            "mouth": {"state": MOUTH_STATES, "evidence": "字符串", "confidence": "0~1"},
-            "gaze": {"state": GAZE_STATES, "evidence": "字符串", "confidence": "0~1"},
-            "phone": {"state": PHONE_STATES, "evidence": "字符串", "confidence": "0~1"},
-            "smoking": {"state": SMOKING_STATES, "evidence": "字符串", "confidence": "0~1"},
-            "hands": {"state": HANDS_STATES, "evidence": "字符串", "confidence": "0~1"},
+            "seat": _enum(SEATS),
+            "person_present": "true 或 false",
+            "apparent_age_group": _enum(AGE_GROUPS),
+            "seatbelt": {"state": _enum(SEATBELT_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
+            "eyes": {"state": _enum(EYE_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
+            "mouth": {"state": _enum(MOUTH_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
+            "gaze": {"state": _enum(GAZE_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
+            "phone": {"state": _enum(PHONE_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
+            "smoking": {"state": _enum(SMOKING_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
+            "hands": {"state": _enum(HANDS_STATES), "evidence": "字符串", "confidence": "0~1 小数"},
         }
     ],
     "notes": "字符串，可选，写下你不确定的地方",
@@ -71,7 +86,8 @@ SYSTEM_PROMPT = """你是车队安全检查系统的视觉核查模块。你的�
 
 USER_PROMPT_TEMPLATE = """请核查这{n_images_desc}车内图片，逐个可见座位输出视觉属性。
 
-严格按下面的 JSON 结构输出（字段名与枚举值必须完全一致，不得新增枚举值）：
+严格按下面的 JSON 结构输出。**竖线分隔的是候选值清单，请从中挑一个填进去，
+不要把整串或数组填回来**；字段名与枚举值必须完全一致，不得新增枚举值：
 {schema}
 
 补充要求：

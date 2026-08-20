@@ -196,6 +196,17 @@ def load_json_lenient(text: str) -> tuple[Any | None, bool, str | None]:
 # ---------------------------------------------------------------------------
 # 第 3 步：白名单校验与归一化
 # ---------------------------------------------------------------------------
+def _unwrap(v: Any) -> Any:
+    """把 ``["driver"]`` 这类单元素数组解包成 ``"driver"``。
+
+    起因见 prompts._enum 的注释：部分模型会把枚举候选清单当成数组值回填。
+    prompt 已经改掉了诱因，这里再兜一层 —— 线上换模型时不必重新调 prompt。
+    """
+    if isinstance(v, list) and len(v) == 1:
+        return v[0]
+    return v
+
+
 def _clamp_conf(v: Any) -> float:
     try:
         f = float(v)
@@ -205,11 +216,12 @@ def _clamp_conf(v: Any) -> float:
 
 
 def _norm_attr(raw: Any, allowed: list[str], coerced: list[str], path: str) -> Attr:
+    raw = _unwrap(raw)
     if isinstance(raw, str):          # 模型偷懒直接给了字符串
         raw = {"state": raw}
     if not isinstance(raw, dict):
         return Attr()
-    state = str(raw.get("state", "unknown")).strip().lower()
+    state = str(_unwrap(raw.get("state", "unknown"))).strip().lower()
     a = Attr(state=state,
              evidence=str(raw.get("evidence", "") or "").strip(),
              confidence=_clamp_conf(raw.get("confidence", 0.0)))
@@ -228,15 +240,15 @@ def _norm_attr(raw: Any, allowed: list[str], coerced: list[str], path: str) -> A
 
 
 def _norm_occupant(raw: dict, coerced: list[str], idx: int) -> Occupant:
-    seat_raw = str(raw.get("seat", "unknown")).strip().lower()
+    seat_raw = str(_unwrap(raw.get("seat", "unknown"))).strip().lower()
     seat = _SEAT_ALIASES.get(seat_raw, seat_raw if seat_raw in P.SEATS else "unknown")
     if seat != seat_raw and seat_raw not in P.SEATS:
         coerced.append(f"occupants[{idx}].seat={seat_raw!r} -> {seat}")
-    age = str(raw.get("apparent_age_group", "unknown")).strip().lower()
+    age = str(_unwrap(raw.get("apparent_age_group", "unknown"))).strip().lower()
     if age not in P.AGE_GROUPS:
         coerced.append(f"occupants[{idx}].apparent_age_group={age!r}")
         age = "unknown"
-    present = raw.get("person_present", True)
+    present = _unwrap(raw.get("person_present", True))
     occ = Occupant(seat=seat, person_present=bool(present) if isinstance(present, bool) else str(present).lower() != "false",
                    apparent_age_group=age)
     for name, allowed in _ATTR_FIELDS.items():
@@ -246,16 +258,16 @@ def _norm_occupant(raw: dict, coerced: list[str], idx: int) -> Occupant:
 
 def _norm_frame(raw: dict, coerced: list[str], idx: int) -> FrameObservation:
     scene = raw.get("scene") if isinstance(raw.get("scene"), dict) else {}
-    view = str(scene.get("view", "unknown")).strip().lower()
+    view = str(_unwrap(scene.get("view", "unknown"))).strip().lower()
     if view not in P.VIEWS:
         coerced.append(f"frames[{idx}].scene.view={view!r}")
         view = "unknown"
-    quality = str(scene.get("image_quality", "unknown")).strip().lower()
+    quality = str(_unwrap(scene.get("image_quality", "unknown"))).strip().lower()
     if quality not in P.IMAGE_QUALITY:
         coerced.append(f"frames[{idx}].scene.image_quality={quality!r}")
         quality = "unknown"
     try:
-        persons = int(scene.get("persons_visible", 0))
+        persons = int(_unwrap(scene.get("persons_visible", 0)))
     except (TypeError, ValueError):
         persons = 0
 
