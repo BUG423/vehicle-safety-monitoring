@@ -76,17 +76,24 @@ def test_事件落库读回后主体角色不丢(tmp_path, violation, role, seat
     store.close()
 
 
-def test_后台附加字段必须能被剥掉(tmp_path):
-    """/api/v1/events 返回值多带了复核字段，下游 from_dict 会崩 —— 必须有剥离入口。"""
+def test_后台附加字段不会污染下游(tmp_path):
+    """/api/v1/events 返回值会多带复核字段（review_status 等）。
+
+    契约层 1.3 起 `from_dict` 采用宽进严出，忽略未知字段，下游不再崩
+    —— 本测试原先断言的 TypeError 正是被上游修复掉的那个缺陷。
+    `strip_backend_fields` 仍然保留：回传给车端或其他路线时，事件应当是纯净的契约结构，
+    不夹带某一侧后台的内部状态。
+    """
     store = EventStore(tmp_path / "t.db")
     ev = SafetyEvent(violation=ViolationType.DRIVER_PHONE_USE, vehicle_id="V2",
                      mode=DetectionMode.SERVER)
     store.insert_event(ev.to_dict())
     row = store.query_events(limit=1)[0]
     assert "review_status" in row
-    with pytest.raises(TypeError):
-        SafetyEvent.from_dict(row)          # 不剥就是会崩，这是契约层的已知限制
-    assert SafetyEvent.from_dict(strip_backend_fields(row)).vehicle_id == "V2"
+    assert SafetyEvent.from_dict(row).vehicle_id == "V2"        # 上游已宽容，不再崩
+    cleaned = strip_backend_fields(row)
+    assert "review_status" not in cleaned                        # 但仍应剥净后再外发
+    assert SafetyEvent.from_dict(cleaned).vehicle_id == "V2"
     store.close()
 
 

@@ -103,9 +103,9 @@ class InCabinChannel(AlertChannel):
         return action or event.message
 
     def send(self, event: SafetyEvent) -> bool:
-        if event.decision is Decision.UNDECIDABLE:
-            # 「判不了」对驾驶员没有可执行动作，播报只会制造噪声；
-            # 但它仍会经后台通道上报，避免被后台读成「检查通过」。
+        if event.decision is not Decision.CONFIRMED:
+            # 「判不了」和「不适用」对驾驶员都没有可执行动作，播报只会制造噪声；
+            # 但它们仍会经后台通道上报 —— 否则后台无法区分「合规」「漏查了」「不用查」。
             return True
         if event.severity.rank < self._min.rank:
             return True  # 低于阈值不打扰驾驶员，但不算失败

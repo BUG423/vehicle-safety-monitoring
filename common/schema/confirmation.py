@@ -32,6 +32,17 @@ class ConfirmRule:
     cooldown_s: float = 30.0       # 同类事件重复上报的冷却时间
     escalate_after_s: float | None = 60.0   # 持续超过该时长升级为 CRITICAL
     release_ratio: float = 0.2     # 命中比例低于该值判定为恢复
+    min_confidence: float = 0.0
+    """低于该置信度的原始判定直接丢弃，不进入滑窗投票。
+
+    弱信号即使连续出现也不该累积成告警 —— 它更可能是模型在噪声上的系统性偏差。"""
+
+    undecidable_min_duration_s: float = 0.5
+    """「判不了」的最短上报时长。
+
+    可以比违规判定快得多：它不打扰驾驶员，只是让后台知道这项没检成，
+    早报比晚报好；而违规判定必须压住误报，所以要 2–8 秒。"""
+
     min_speed_kmh: float | None = None
     """低于该车速时不判定本违规。
 
@@ -111,10 +122,14 @@ class ViolationConfirmer:
         key: str = "default",
         now: float | None = None,
         speed_kmh: float | None = None,
+        undecidable: bool = False,
     ) -> Confirmation:
         now = time.time() if now is None else now
         rule = self.rule_for(violation)
         state = self._states.setdefault((violation, key), _TrackState())
+
+        if hit and confidence < rule.min_confidence:
+            hit = False
 
         # 车速门控：静止时分心/看手机不成立。车速未知时不门控，避免因缺信号漏报。
         if hit and rule.min_speed_kmh is not None and speed_kmh is not None \
@@ -147,7 +162,8 @@ class ViolationConfirmer:
             severity = Severity.CRITICAL
 
         should_alert = False
-        if active and duration >= rule.min_duration_s:
+        min_duration = rule.undecidable_min_duration_s if undecidable else rule.min_duration_s
+        if active and duration >= min_duration:
             cooled = state.last_report_ts is None or (now - state.last_report_ts) >= rule.cooldown_s
             if not state.reported or cooled:
                 should_alert = True

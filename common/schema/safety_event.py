@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 try:  # 允许以包方式或独立文件方式引入
@@ -20,7 +20,7 @@ try:  # 允许以包方式或独立文件方式引入
 except ImportError:  # pragma: no cover
     from violation_types import Decision, DetectionMode, Severity, SubjectRole, ViolationType
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 SEAT_LABELS_ZH: dict[str, str] = {
     "driver": "主驾",
@@ -48,6 +48,7 @@ class Evidence:
     frame_uri: str | None = None       # 关键帧存储路径 / 对象存储 URL
     frame_b64: str | None = None       # 小尺寸缩略图（base64），便于告警直接携带
     clip_uri: str | None = None        # 事件前后视频片段
+    clip_range_s: tuple[float, float] | None = None   # 片段相对事件时刻的起止秒，如 (-5.0, 3.0)
     bbox: list[float] | None = None    # [x1, y1, x2, y2] 归一化坐标
     captured_at: float | None = None   # 证据帧的采集时间戳
     model_version: str | None = None   # 产出该判定的模型标识，灰度期用于把误报归因到具体版本
@@ -131,8 +132,17 @@ class SafetyEvent:
         else:
             subject = Subject()
         raw_evidence = d.pop("evidence", None)
-        evidence = Evidence(**raw_evidence) if isinstance(raw_evidence, dict) else Evidence()
+        if isinstance(raw_evidence, dict):
+            ev_known = {f.name for f in fields(Evidence)}
+            evidence = Evidence(**{k: v for k, v in raw_evidence.items() if k in ev_known})
+        else:
+            evidence = Evidence()
         d.pop("schema_version", None)
+        # 宽进严出：后台落库、复核流程必然会给事件附加自己的元数据（review_status、
+        # 处理人、工单号…）。这些字段随事件回流到下游时不应让反序列化崩溃 ——
+        # 它们不属于契约，忽略即可，但产出方仍必须严格按契约写。
+        known = {f.name for f in fields(cls)}
+        d = {k: v for k, v in d.items() if k in known}
         return cls(subject=subject, evidence=evidence, **d)
 
 
@@ -148,6 +158,7 @@ class VehicleContext:
     gps: tuple[float, float] | None = None
     seatbelt_switch: dict[str, bool] = field(default_factory=dict)  # 座位 -> 是否扣合（车身总线信号）
     seat_capacity: int | None = None   # 核定载客数，超员判定的统一口径（来自行驶证，非视觉推断）
+    road_type: str | None = None       # highway/urban/rural/parking，限速与告警口径随路况不同
     ts: float = field(default_factory=time.time)
 
     @property

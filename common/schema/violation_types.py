@@ -37,8 +37,14 @@ class Decision(str, Enum):
     因此「判不了」也要作为一条记录上报，只是不打扰驾驶员（对司机没有可执行动作）。
     """
 
-    CONFIRMED = "confirmed"        # 确认违规
-    UNDECIDABLE = "undecidable"    # 无法判定：遮挡、光线不足、目标未入镜、需时序而样本不足
+    CONFIRMED = "confirmed"          # 确认违规
+    UNDECIDABLE = "undecidable"      # 判不了：遮挡、光线不足、目标未入镜、需时序而样本不足
+    NOT_APPLICABLE = "not_applicable"
+    """本项不适用：副驾无人时「乘客未系安全带」既不是违规，也不是判不了。
+
+    与 UNDECIDABLE 分开，后台才能区分「不用查」和「漏查了」——
+    不产出任何记录会让这两种情况在后台看起来完全一样。
+    """
 
 
 class ViolationType(str, Enum):

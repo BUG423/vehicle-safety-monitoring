@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from common import (  # noqa: E402
     AlertDispatcher,
+    ConfirmRule,
     Decision,
     BackendChannel,
     DetectionMode,
@@ -345,6 +346,63 @@ def test_混合部署模式可表达():
     """边缘初筛 + 云端复核是最可能的最终形态，事件需要能标识它。"""
     e = SafetyEvent(violation=ViolationType.DRIVER_PHONE_USE, vehicle_id="V1", mode="hybrid")
     assert e.mode is DetectionMode.HYBRID
+
+
+def test_反序列化宽容后台附加的元数据():
+    """宽进严出：后台落库与复核流程必然给事件附加自己的字段（复核状态、处理人、工单号），
+    这些字段随事件回流到下游时不应让反序列化崩溃。"""
+    e = SafetyEvent(violation=ViolationType.DRIVER_FATIGUE, vehicle_id="V1", mode=DetectionMode.SERVER)
+    d = e.to_dict()
+    d["review_status"] = "pending"
+    d["assignee"] = "张三"
+    d["evidence"]["backend_thumb_url"] = "https://oss/x.jpg"
+    back = SafetyEvent.from_dict(d)
+    assert back.event_id == e.event_id and back.violation is e.violation
+
+
+def test_不适用与判不了都不打扰驾驶员但都要上报():
+    """副驾无人时「乘客未系安全带」是「不适用」，不是「判不了」。
+    两者都不产出记录的话，后台无法区分「不用查」和「漏查了」。"""
+    prompts, backend = [], []
+    d = AlertDispatcher([
+        InCabinChannel(sink=prompts.append),
+        BackendChannel(sender=lambda e: (backend.append(e) or True)),
+    ])
+    for dec in (Decision.UNDECIDABLE, Decision.NOT_APPLICABLE):
+        d.dispatch(SafetyEvent(violation=ViolationType.PASSENGER_NO_SEATBELT, vehicle_id="V1",
+                               mode=DetectionMode.SERVER, decision=dec))
+    d.dispatch(SafetyEvent(violation=ViolationType.PASSENGER_NO_SEATBELT,
+                           vehicle_id="V1", mode=DetectionMode.SERVER))
+    time.sleep(1.0)
+    d.close()
+    assert len(prompts) == 1, "只有确认违规才播报"
+    assert len(backend) == 3, "三种判定结果后台都要收到"
+
+
+def test_判不了可以比违规更快上报():
+    """它不打扰司机，早报比晚报好；违规判定则必须先压住误报。"""
+    conf = ViolationConfirmer()
+    rule = conf.rule_for(ViolationType.DRIVER_NO_SEATBELT)
+    assert rule.undecidable_min_duration_s < rule.min_duration_s
+    t, first_undecidable = 0.0, None
+    for _ in range(60):
+        t += 0.2
+        if conf.update(ViolationType.DRIVER_NO_SEATBELT, True, key="u",
+                       now=t, undecidable=True).should_alert:
+            first_undecidable = t
+            break
+    assert first_undecidable is not None and first_undecidable < rule.min_duration_s
+
+
+def test_低置信度信号不累积成告警():
+    """弱信号即使连续出现也不该攒成告警 —— 更可能是模型在噪声上的系统性偏差。"""
+    conf = ViolationConfirmer({ViolationType.DRIVER_SMOKING: ConfirmRule(min_confidence=0.5)})
+    t, alerts = 0.0, 0
+    for _ in range(100):
+        t += 0.2
+        if conf.update(ViolationType.DRIVER_SMOKING, True, confidence=0.3, key="d", now=t).should_alert:
+            alerts += 1
+    assert alerts == 0
 
 
 def test_告警失败不会中断检测主循环():
