@@ -322,6 +322,11 @@ passenger.no_seatbelt [6-52s]  ✓     4.13s    1
 
 ## 对契约层的修改建议
 
-按约定不直接改 `common/`，建议见 **[DESIGN.md §10](DESIGN.md)**，共 4 条：
-`SafetyEvent.from_dict()` 丢失 `subject.role`、`BackendChannel` 落盘目录缺容量上限与丢弃策略、
-`ConfirmRule` 建议加车速门控、`Evidence` 建议加模型版本字段。
+按约定不直接改 `common/`，建议见 **[DESIGN.md §10](DESIGN.md)**，共 5 条：
+
+1. `SafetyEvent.from_dict()` 会丢失 `subject.role`（`d.pop` 与 `d.get` 的求值顺序问题）
+2. `BackendChannel` 的落盘目录没有容量上限 —— 长时间断网会写满 eMMC，
+   建议加上限并按严重等级丢弃（先丢 INFO，保 CRITICAL）
+3. `ConfirmRule` 建议加 `min_speed_kmh` 车速门控（分心在静止时不成立）
+4. `Evidence` 建议加 `model_version` —— 模型灰度期间无法把误报归因到具体版本
+5. `_default_message()` 把座位英文键拼进中文播报语（"未系安全带（driver）"）

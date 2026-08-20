@@ -756,6 +756,14 @@ subject = Subject(**{**sub_raw, "role": SubjectRole(sub_raw.get("role", "unknown
 没有版本字段就无法把误报归因到具体版本。
 当前本仓库暂时写在 `raw_signals` 里，但建议提升为 `Evidence` 的正式字段。
 
+### 建议 5（低优先级）：`SafetyEvent._default_message()` 把座位英文键直接拼进中文播报语
+
+实测产出的事件文案是「驾驶员未系安全带（driver），持续 2.0 秒」——
+括号里是 `subject.seat` 的原始键名。这条 `message` 会被车内屏幕横幅和后台列表直接显示，
+中英夹杂读起来别扭。建议加一张座位中文名映射
+（`driver` → 驾驶位、`front_passenger` → 副驾、`rear_left` → 左后排…），
+没有映射时省略括号而不是回退到英文键。
+
 ### 已由汇总方修复（记录在此备查）
 
 `InCabinChannel._speech_text()` 中 `from violation_types import ViolationType as VT`
