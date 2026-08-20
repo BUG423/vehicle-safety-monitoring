@@ -2,3 +2,4 @@
 models/*.onnx
 assets/*.mp4
 runtime/
+backend/received_events.jsonl
