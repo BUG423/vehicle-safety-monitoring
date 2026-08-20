@@ -91,16 +91,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.offline_from is not None and isinstance(sender, HttpBackendSender):
         state = {"cut": False, "restored": False}
 
+        import time as _time
+
+        def _spool_n() -> int:
+            return len(list(Path(cfg.spool_dir).glob("*.json")))
+
         def hook(t: float) -> None:               # noqa: ANN001
             if not state["cut"] and t >= args.offline_from:
                 sender.online = False
                 state["cut"] = True
-                print(f"\n>>> t={t:.1f}s 模拟断网：后台通道不可达，事件应转为落盘\n")
+                print(f"\n>>> t={t:.1f}s 【模拟断网】后台通道不可达，事件应转为本地落盘")
+                print(">>> 注意：车内语音提醒不受影响 —— 它根本不经过网络，这正是模式C 的核心优势\n")
             elif (state["cut"] and not state["restored"]
                   and args.offline_to is not None and t >= args.offline_to):
+                # 等异步上报线程把断网期间的事件全部落盘，让「补传前」的状态可观测
+                _time.sleep(1.5)
+                print(f"\n>>> t={t:.1f}s 【网络恢复】断网期间落盘 {_spool_n()} 条，开始补传")
                 sender.online = True
                 state["restored"] = True
-                print(f"\n>>> t={t:.1f}s 网络恢复：落盘事件应开始补传\n")
+                _time.sleep(cfg.retry_interval_s * 2 + 1.0)
+                print(f">>> 补传后本地待发队列剩余 {_spool_n()} 条\n")
 
     try:
         engine.run(source, max_frames=args.max_frames, realtime=args.realtime,
