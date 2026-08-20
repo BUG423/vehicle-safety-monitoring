@@ -6,11 +6,15 @@
 甲方需求尚未定型，因此本仓库不押注单一技术路线，而是**并行实现三条路线**并给出可对比的证据，
 供后续按甲方实际约束（预算 / 车队规模 / 网络条件 / 隐私要求）做选型。
 
-| 路线 | 目录 | 一句话定位 |
-|---|---|---|
-| **模式 A** 大模型直接理解图片 | [`mode-a-vlm/`](mode-a-vlm/) | 发车前一次性安全检查、边缘上报后的云端复核 |
-| **模式 B** 后台服务器实时监测汇总 | [`mode-b-server/`](mode-b-server/) | 车队级集中监管、统计与复核工作流 |
-| **模式 C** 车载嵌入式设备 | [`mode-c-edge/`](mode-c-edge/) | 断网自治、低延迟本地实时告警 |
+| 路线 | 目录 | 定位 | 基准告警延迟 | 基准误报 | 断网 |
+|---|---|---|---|---|---|
+| **A** 大模型理解图片 | [`mode-a-vlm/`](mode-a-vlm/) | 发车前一次性检查、云端复核 | 28 s | 0 | 失效 |
+| **B** 后台服务器监测 | [`mode-b-server/`](mode-b-server/) | 车队级集中监管与复核 | **5.23 s** | 0 | 失效 |
+| **C** 车载嵌入式设备 | [`mode-c-edge/`](mode-c-edge/) | 断网自治、本地实时告警 | 5.60 s | 0 | **可用** |
+
+三条路线跑同一份素材、同一套标注、同一个打分脚本，因此延迟与误报可横向对比。
+**检出率不可比**——素材是合成画面，云端大模型把安全带认成「一根细长的棍子」，
+它不在模型的训练分布内。各自在真实素材上的表现见 [`docs/MODE-COMPARISON.md`](docs/MODE-COMPARISON.md)。
 
 ## 关键设计：先固化契约，再比较路线
 
@@ -66,7 +70,44 @@ docs/              总体架构、三路线对比与选型建议
 
 ## 手机演示
 
-三条路线各有一个单文件、自包含的手机演示页，见 [`mobile-demo/`](mobile-demo/)。
-用手机浏览器直接打开即可，无需后端。各页面均标注了哪部分是真实逻辑、哪部分是模拟数据。
+**https://bug423.github.io/vehicle-safety-monitoring/**
 
-各路线还有**完整可运行的本地 Demo**（真实模型 + 后端服务），运行方式见各自 README。
+手机浏览器打开后，分享菜单 →「添加到主屏幕」，即可像 App 一样使用（PWA，离线可用）。
+各演示页都标注了哪部分是真实逻辑、哪部分是模拟——请以页面上的标注为准，不要把演示当作实测。
+
+页面源码在 [`mobile-demo/`](mobile-demo/)，单文件自包含、无外部依赖；
+`tools/deploy_pages.sh` 负责发布到 `gh-pages` 分支。
+
+## 本地运行
+
+```bash
+# 契约层与全仓测试（89 项）
+python3 -m pytest tests/ mode-a-vlm/tests mode-b-server mode-c-edge -q
+
+# 模式 A：无 key 走 mock，配了 SILICONFLOW_API_KEY 则调真实云端模型
+./mode-a-vlm/run_demo.sh check
+
+# 模式 B：后台服务 + 车队看板
+bash mode-b-server/run.sh
+
+# 模式 C：车载端全链路（含性能实测与断网补传）
+bash mode-c-edge/run_demo.sh
+
+# 公共评测基准：生成带标注素材并给任一路线打分
+python3 bench/make_clip.py --out bench/clips/scenario_a
+python3 bench/score.py --truth bench/clips/scenario_a_truth.json --events <事件>.jsonl --label 模式C
+```
+
+各路线的详细运行方式、接口说明与已知限制见各自的 `README.md` 与 `DESIGN.md`。
+
+## 凭据
+
+云端模型的 API key 通过环境变量注入，**绝不入库**：
+
+```bash
+export SILICONFLOW_API_KEY=<你的 key>
+export SILICONFLOW_VL_MODEL=Qwen/Qwen3-VL-32B-Instruct
+```
+
+`.gitignore` 已覆盖 `.env`/`*.env`/`*apikey*` 等形式。提交前可自查：
+`git diff --cached | grep -i 'sk-'`。
