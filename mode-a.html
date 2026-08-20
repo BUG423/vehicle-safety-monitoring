@@ -1,8 +1,506 @@
-<title>模式 A 演示准备中</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#EEF1F6;color:#0B0D12;
-font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;text-align:center;padding:24px}
-@media(prefers-color-scheme:dark){body{background:#0A0B0E;color:#F2F3F5}}
-a{color:#007AFF;text-decoration:none}</style>
-<div><p style="font-size:17px">该演示页尚未合入</p>
-<p><a href="index.html">‹ 返回</a></p></div>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef1f6">
+<title>模式A · 大模型看图安全检查</title>
+<link rel="manifest" href="manifest.json">
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}</script>
+<style>
+:root{
+  --bg1:#eef1f6; --bg2:#e6ecf5; --bg3:#f7eef3;
+  --glass:rgba(255,255,255,.55); --glass2:rgba(255,255,255,.36);
+  --stroke:rgba(255,255,255,.6); --hair:rgba(0,0,0,.07);
+  --text:#0b0b0f; --t2:rgba(11,11,15,.56); --t3:rgba(11,11,15,.36);
+  --accent:#0a84ff; --warn:#ff9f0a; --crit:#ff453a; --ok:#30d158;
+  --shadow:0 8px 30px rgba(20,25,45,.10), 0 1px 2px rgba(20,25,45,.05);
+  --r:22px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg1:#0b0f16; --bg2:#111825; --bg3:#1b1221;
+    --glass:rgba(30,34,44,.55); --glass2:rgba(30,34,44,.36);
+    --stroke:rgba(255,255,255,.18); --hair:rgba(255,255,255,.08);
+    --text:#f5f6fa; --t2:rgba(245,246,250,.6); --t3:rgba(245,246,250,.38);
+    --shadow:0 10px 34px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+  color:var(--text); background:var(--bg1);
+  background-image:
+    radial-gradient(72% 55% at 10% 0%, var(--bg3) 0%, transparent 60%),
+    radial-gradient(84% 62% at 100% 6%, var(--bg2) 0%, transparent 64%);
+  background-attachment:fixed; min-height:100vh; font-size:15px; line-height:1.5;
+  padding:max(16px,env(safe-area-inset-top)) 16px calc(30px + env(safe-area-inset-bottom));
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.g{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(20px) saturate(180%); backdrop-filter:blur(20px) saturate(180%);
+  border:1px solid var(--stroke); border-radius:var(--r); box-shadow:var(--shadow); padding:16px;
+}
+h1{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 5px}
+.sub{font-size:13px;color:var(--t2);margin:0}
+h2{font-size:12.5px;font-weight:600;color:var(--t2);margin:0 0 11px;letter-spacing:.03em}
+.row{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.pill{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--hair);background:var(--glass2);color:var(--t2);white-space:nowrap}
+.pill.sim{color:#8a5a00;background:rgba(255,159,10,.16);border-color:rgba(255,159,10,.4)}
+.pill.real{color:#0a7c34;background:rgba(48,209,88,.14);border-color:rgba(48,209,88,.34)}
+@media (prefers-color-scheme:dark){.pill.sim{color:#ffcf7a}.pill.real{color:#7ee2a0}}
+.notice{
+  border-radius:16px;border:1px solid rgba(255,159,10,.4);background:rgba(255,159,10,.13);
+  padding:12px 14px;font-size:12.5px;line-height:1.55;color:var(--text);
+}
+.notice b{font-weight:600}
+video,canvas{width:100%;border-radius:16px;display:block;background:rgba(120,120,140,.14);aspect-ratio:4/3;object-fit:cover}
+#shot{display:none}
+.btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+button{
+  font:inherit;font-size:14px;font-weight:500;color:var(--text);background:var(--glass2);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid var(--stroke);border-radius:14px;padding:11px 15px;cursor:pointer;
+  flex:1 1 auto;min-width:94px;transition:transform .12s ease,opacity .12s ease;
+}
+button:active{transform:scale(.975)}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--accent);border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(10,132,255,.28)}
+label.fld{display:block;font-size:12px;color:var(--t3);margin:12px 0 5px}
+select{font:inherit;font-size:13px;color:var(--text);background:var(--glass2);border:1px solid var(--stroke);border-radius:12px;padding:10px 11px;width:100%;-webkit-appearance:none;appearance:none}
+.banner{border-radius:18px;padding:14px 16px;display:none;font-weight:600;font-size:15px;border:1px solid transparent;
+  -webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%)}
+.banner.show{display:block;animation:pop .34s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
+.banner .s{display:block;font-weight:400;font-size:12.5px;opacity:.82;margin-top:4px}
+.banner.crit{background:rgba(255,69,58,.18);border-color:rgba(255,69,58,.45);color:#a3231a}
+.banner.warn{background:rgba(255,159,10,.18);border-color:rgba(255,159,10,.42);color:#8a5a00}
+.banner.ok{background:rgba(48,209,88,.16);border-color:rgba(48,209,88,.38);color:#0a7c34}
+@media (prefers-color-scheme:dark){.banner.crit{color:#ff9a92}.banner.warn{color:#ffcf7a}.banner.ok{color:#7ee2a0}}
+.ev{border-radius:16px;border:1px solid var(--hair);background:var(--glass2);padding:12px 13px;margin-bottom:9px}
+.ev:last-child{margin-bottom:0}
+.ev .t{display:flex;gap:8px;align-items:center;font-weight:600;font-size:14.5px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.critical{background:var(--crit)}.dot.warn{background:var(--warn)}.dot.info{background:var(--accent)}
+.ev .m{font-size:12.5px;color:var(--t2);margin-top:5px}
+.ev .m b{color:var(--text);font-weight:600}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--hair)}
+.kv:last-child{border-bottom:none}
+.kv span:first-child{color:var(--t2);flex:none}
+.kv span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.feed{max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.fi{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:12.5px}
+.fi:last-child{border-bottom:none}
+.ch{flex:none;font-size:10.5px;padding:2px 7px;border-radius:6px;background:var(--glass2);border:1px solid var(--hair);color:var(--t2);height:fit-content}
+.tx{flex:1;min-width:0;color:var(--t2)}.tx b{color:var(--text);font-weight:600}
+.muted{color:var(--t3);font-size:12.5px;margin:0}
+details summary{font-size:12.5px;color:var(--t2);cursor:pointer;list-style:none;padding:2px 0}
+details summary::-webkit-details-marker{display:none}
+pre{font-size:11px;line-height:1.45;overflow-x:auto;background:var(--glass2);border:1px solid var(--hair);border-radius:12px;padding:10px;margin:8px 0 0;white-space:pre-wrap;word-break:break-word;color:var(--t2)}
+.steps{display:flex;flex-direction:column;gap:8px}
+.st{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--t2)}
+.st .n{flex:none;width:20px;height:20px;border-radius:7px;background:var(--glass2);border:1px solid var(--hair);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text);font-weight:600}
+.st b{color:var(--text);font-weight:600}
+.tag{font-size:10.5px;padding:1px 6px;border-radius:5px;margin-left:5px;white-space:nowrap}
+.tag.r{background:rgba(48,209,88,.16);color:#0a7c34;border:1px solid rgba(48,209,88,.3)}
+.tag.s{background:rgba(255,159,10,.16);color:#8a5a00;border:1px solid rgba(255,159,10,.34)}
+@media (prefers-color-scheme:dark){.tag.r{color:#7ee2a0}.tag.s{color:#ffcf7a}}
+footer{text-align:center;font-size:11.5px;color:var(--t3);padding:2px 8px 0;line-height:1.6}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--t3);border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="g">
+    <h1>模式A · 大模型看图安全检查</h1>
+    <p class="sub">发车前拍一张车内照片，视觉大模型抽取结构化观测，规则层判定违规，车内提醒 + 后台上报双通道告警。</p>
+    <div class="row" style="margin-top:11px">
+      <span class="pill sim">本页 VLM 推理为模拟</span>
+      <span class="pill">事件结构 SafetyEvent v1.2</span>
+      <span class="pill">mode_a_vlm</span>
+    </div>
+  </header>
+
+  <div class="g notice">
+    <b>诚实说明 —— 这个页面里哪些是真的：</b><br>
+    本页是<b>单文件离线演示</b>，不连任何后端。<b>模型推理是模拟的</b>：下面看到的"模型原始回答"
+    由页面内的预置脚本按你选的场景生成，没有真实的视觉理解。<br>
+    但<b>数据结构、判定规则、告警分级、事件字段与仓库里的真实实现完全一致</b>
+    —— 真实链路（<code>mode-a-vlm/</code> + FastAPI 服务）已用云端 Qwen3-VL 实测跑通，
+    本页只是把那条链路搬到手机上离线复现一遍，方便随时演示。
+  </div>
+
+  <section class="g">
+    <h2>1 · 采集</h2>
+    <video id="cam" playsinline autoplay muted></video>
+    <canvas id="shot"></canvas>
+    <div class="btns">
+      <button id="btnCam">打开摄像头</button>
+      <button id="btnShot" class="primary" disabled>拍照并检测</button>
+    </div>
+    <label class="fld">不给摄像头权限？直接用内置示例场景（画面由页面实时绘制，不引用任何外部图片）</label>
+    <select id="scenario">
+      <option value="driver_no_seatbelt">驾驶员未系安全带</option>
+      <option value="phone_use">驾驶员打电话 + 单手脱把</option>
+      <option value="smoking">车内抽烟</option>
+      <option value="passenger_no_seatbelt">副驾儿童未系安全带</option>
+      <option value="all_clear">一切正常（检查通过）</option>
+      <option value="camera_blocked">摄像头被遮挡</option>
+    </select>
+    <div class="btns"><button id="btnSample" class="primary">用示例图检测</button></div>
+  </section>
+
+  <div id="banner" class="banner"></div>
+
+  <section class="g">
+    <h2>2 · 检测结果</h2>
+    <div id="events"><p class="muted">尚未检测。</p></div>
+    <div id="meta"></div>
+  </section>
+
+  <section class="g">
+    <h2>3 · 告警流水（车内 + 后台双通道）</h2>
+    <div class="feed" id="feed"><p class="muted">暂无告警。</p></div>
+    <div class="btns"><button id="btnClear">清空</button></div>
+  </section>
+
+  <section class="g">
+    <h2>4 · 这条链路每一步是真是模拟</h2>
+    <div class="steps" id="steps"></div>
+  </section>
+
+  <section class="g">
+    <h2>5 · 能力边界（必须先说清）</h2>
+    <div class="kv"><span>超速 / 急加速</span><span>看图判不了，必须来自 OBD/GPS</span></div>
+    <div class="kv"><span>疲劳驾驶</span><span>单帧判不了，需多帧算 PERCLOS</span></div>
+    <div class="kv"><span>安全带被遮挡</span><span>输出"无法判定"，不当作合规</span></div>
+    <div class="kv"><span>7×24 逐帧监控</span><span>不适合：延迟与成本都不成立</span></div>
+    <div class="kv"><span>模式A 的定位</span><span>发车前检查 + 云端复核</span></div>
+  </section>
+
+  <footer>
+    车辆安全监测 · 三路线并行验证 · 模式A（VLM 图片理解）<br>
+    真实实现见仓库 <code>mode-a-vlm/</code>，含 FastAPI 服务与可插拔的多家 VLM 后端。
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+let stream = null, feed = [], lastShot = null;
+
+/* ---------- 模拟的 VLM 结构化返回 ----------
+   这些是**预置**的观测数据，格式与真实 prompt 要求模型输出的 JSON 完全一致。
+   真实链路中这一段由云端 Qwen3-VL 生成；本页由脚本按场景直接给出。 */
+const SIM = {
+  driver_no_seatbelt: {
+    scene:{view:"cabin_front",image_quality:"good",persons_visible:1},
+    occupants:[{seat:"driver",person_present:true,apparent_age_group:"adult",
+      seatbelt:{state:"not_fastened",evidence:"肩部与胸前清晰可见，无任何织带经过",confidence:0.91},
+      eyes:{state:"open",evidence:"双眼睁开",confidence:0.88},
+      mouth:{state:"normal",evidence:"嘴部闭合",confidence:0.85},
+      gaze:{state:"forward",evidence:"面部朝向正前方",confidence:0.8},
+      phone:{state:"not_visible",evidence:"双手区域未见手持设备",confidence:0.88},
+      smoking:{state:"not_visible",evidence:"口部及手部未见烟支",confidence:0.9},
+      hands:{state:"both_on_wheel",evidence:"两手分别位于方向盘两侧",confidence:0.84}}],
+    notes:"驾驶位安全带插扣区域未见织带。"},
+  phone_use: {
+    scene:{view:"cabin_front",image_quality:"good",persons_visible:1},
+    occupants:[{seat:"driver",person_present:true,apparent_age_group:"adult",
+      seatbelt:{state:"fastened",evidence:"左肩至右腰可见深色斜跨织带",confidence:0.86},
+      eyes:{state:"open",evidence:"双眼睁开",confidence:0.85},
+      mouth:{state:"normal",evidence:"嘴部张合，似在说话",confidence:0.7},
+      gaze:{state:"left",evidence:"头部向左偏转约 30 度",confidence:0.75},
+      phone:{state:"held_to_ear",evidence:"左手持矩形深色物体紧贴左耳",confidence:0.89},
+      smoking:{state:"not_visible",evidence:"未见烟支",confidence:0.9},
+      hands:{state:"one_on_wheel",evidence:"仅右手在方向盘上",confidence:0.86}}],
+    notes:"手机为矩形深色物体，贴于左耳位置。"},
+  smoking: {
+    scene:{view:"cabin_front",image_quality:"good",persons_visible:1},
+    occupants:[{seat:"driver",person_present:true,apparent_age_group:"adult",
+      seatbelt:{state:"fastened",evidence:"可见斜跨织带",confidence:0.88},
+      eyes:{state:"open",evidence:"双眼睁开",confidence:0.87},
+      mouth:{state:"normal",evidence:"嘴角叼有细长白色物体",confidence:0.8},
+      gaze:{state:"forward",evidence:"面部朝前",confidence:0.82},
+      phone:{state:"not_visible",evidence:"未见手机",confidence:0.88},
+      smoking:{state:"cigarette_visible",evidence:"嘴角细长白色柱体，端部有橙色亮点",confidence:0.83},
+      hands:{state:"one_on_wheel",evidence:"右手在方向盘，左手抬至面部",confidence:0.8}}],
+    notes:"白色柱状物端部有亮点，符合点燃状态。"},
+  passenger_no_seatbelt: {
+    scene:{view:"cabin_front",image_quality:"good",persons_visible:2},
+    occupants:[{seat:"driver",person_present:true,apparent_age_group:"adult",
+      seatbelt:{state:"fastened",evidence:"可见斜跨织带",confidence:0.9},
+      eyes:{state:"open",evidence:"双眼睁开",confidence:0.85},
+      mouth:{state:"normal",evidence:"嘴部闭合",confidence:0.85},
+      gaze:{state:"forward",evidence:"面部朝前",confidence:0.8},
+      phone:{state:"not_visible",evidence:"未见手机",confidence:0.88},
+      smoking:{state:"not_visible",evidence:"未见烟支",confidence:0.9},
+      hands:{state:"both_on_wheel",evidence:"双手握方向盘",confidence:0.82}},
+     {seat:"front_passenger",person_present:true,apparent_age_group:"child",
+      seatbelt:{state:"not_fastened",evidence:"肩部清晰可见，无织带",confidence:0.84},
+      eyes:{state:"open",evidence:"双眼睁开",confidence:0.8},
+      mouth:{state:"normal",evidence:"嘴部闭合",confidence:0.75},
+      gaze:{state:"right",evidence:"头部朝向车窗",confidence:0.7},
+      phone:{state:"not_visible",evidence:"未见手机",confidence:0.8},
+      smoking:{state:"not_visible",evidence:"未见烟支",confidence:0.9},
+      hands:{state:"unknown",evidence:"非驾驶位不适用",confidence:0.5}}],
+    notes:"副驾乘员体型明显小于驾驶员，判断为儿童。"},
+  all_clear: {
+    scene:{view:"cabin_front",image_quality:"good",persons_visible:2},
+    occupants:[{seat:"driver",person_present:true,apparent_age_group:"adult",
+      seatbelt:{state:"fastened",evidence:"左肩至右腰可见深色斜跨织带",confidence:0.93},
+      eyes:{state:"open",evidence:"双眼睁开，瞳孔清晰",confidence:0.9},
+      mouth:{state:"normal",evidence:"嘴部闭合",confidence:0.88},
+      gaze:{state:"forward",evidence:"面部朝向正前方",confidence:0.85},
+      phone:{state:"not_visible",evidence:"未见手机",confidence:0.9},
+      smoking:{state:"not_visible",evidence:"未见烟支",confidence:0.92},
+      hands:{state:"both_on_wheel",evidence:"两手在方向盘",confidence:0.87}},
+     {seat:"front_passenger",person_present:true,apparent_age_group:"adult",
+      seatbelt:{state:"fastened",evidence:"右肩可见斜跨织带",confidence:0.9},
+      eyes:{state:"open",evidence:"双眼睁开",confidence:0.8},
+      mouth:{state:"normal",evidence:"嘴部闭合",confidence:0.8},
+      gaze:{state:"forward",evidence:"面部朝前",confidence:0.7},
+      phone:{state:"not_visible",evidence:"未见手机",confidence:0.85},
+      smoking:{state:"not_visible",evidence:"未见烟支",confidence:0.9},
+      hands:{state:"unknown",evidence:"非驾驶位不适用",confidence:0.5}}],
+    notes:"光照良好，两名乘员均清晰可见。"},
+  camera_blocked: {
+    scene:{view:"unknown",image_quality:"lens_blocked",persons_visible:0},
+    occupants:[], notes:"画面整体均匀暗色，疑似镜头被遮挡或贴纸覆盖。"}
+};
+
+/* ---------- 规则层：与 mode-a-vlm/vlm_safety/rules.py 同口径 ---------- */
+const LABEL = {
+  "driver.no_seatbelt":"驾驶员未系安全带","passenger.no_seatbelt":"乘客未系安全带",
+  "driver.phone_use":"驾驶中使用手机","driver.smoking":"驾驶中抽烟",
+  "driver.fatigue":"疲劳驾驶","driver.distraction":"驾驶员分心",
+  "driver.hands_off_wheel":"双手脱离方向盘","passenger.child_front_seat":"儿童乘坐副驾",
+  "system.camera_blocked":"摄像头异常","vehicle.speeding":"车辆超速"
+};
+const SEV = {
+  "driver.no_seatbelt":"critical","driver.phone_use":"critical","driver.fatigue":"critical",
+  "passenger.no_seatbelt":"warn","driver.smoking":"warn","driver.distraction":"warn",
+  "driver.hands_off_wheel":"warn","passenger.child_front_seat":"warn",
+  "system.camera_blocked":"warn","vehicle.speeding":"critical"
+};
+const SPEECH = {
+  "driver.no_seatbelt":"请系好安全带","passenger.no_seatbelt":"请提醒乘客系好安全带",
+  "driver.phone_use":"行车中请勿使用手机","driver.smoking":"车内请勿吸烟",
+  "driver.fatigue":"检测到疲劳，请就近停车休息","driver.distraction":"请注意前方道路",
+  "driver.hands_off_wheel":"请双手握好方向盘","passenger.child_front_seat":"儿童不应乘坐副驾",
+  "system.camera_blocked":"摄像头异常，请检查遮挡"
+};
+const MIN_CONF = 0.55;
+
+function evaluate(obs){
+  const events = [], undecidable = [];
+  if(obs.scene.image_quality === "lens_blocked"){
+    events.push(mk("system.camera_blocked", null, 0.9, obs.notes));
+    return {events, undecidable};
+  }
+  if(obs.scene.view === "not_a_vehicle_cabin"){
+    return {events, undecidable, note:"输入不是车内画面，跳过全部安全检查"};
+  }
+  for(const o of obs.occupants){
+    const isDriver = o.seat === "driver";
+    const b = o.seatbelt, vt = isDriver ? "driver.no_seatbelt" : "passenger.no_seatbelt";
+    if(b.state === "not_fastened" && b.confidence >= MIN_CONF){
+      events.push(mk(vt, o.seat, b.confidence, b.evidence));
+    }else if(b.state !== "fastened"){
+      undecidable.push({v:vt, seat:o.seat, r:`安全带状态 ${b.state}（置信 ${b.confidence.toFixed(2)}），画面不足以判定`});
+    }
+    if(isDriver){
+      if((o.phone.state === "held_to_ear" || o.phone.state === "held_in_view") && o.phone.confidence >= MIN_CONF)
+        events.push(mk("driver.phone_use", o.seat, o.phone.confidence, o.phone.evidence));
+      if(o.smoking.state === "cigarette_visible" && o.smoking.confidence >= MIN_CONF)
+        events.push(mk("driver.smoking", o.seat, o.smoking.confidence, o.smoking.evidence));
+      undecidable.push({v:"driver.fatigue", seat:"driver",
+        r:"疲劳需要 PERCLOS 等时序指标，单帧只能给瞬时闭眼状态，不构成判定"});
+      if(o.hands.state === "none_on_wheel" || o.hands.state === "one_on_wheel")
+        undecidable.push({v:"driver.hands_off_wheel", seat:"driver",
+          r:"静态检查场景车辆未行驶，脱把不计违规（行驶中才判）"});
+    }
+    if(o.seat === "front_passenger" && o.apparent_age_group === "child")
+      events.push(mk("passenger.child_front_seat", o.seat, 0.75, "副驾乘员体型/面部特征判断为儿童"));
+  }
+  undecidable.push({v:"vehicle.speeding", seat:"-",
+    r:"超速只能来自 OBD/GPS 信号，图像给不出，本次未接入车辆信号"});
+  return {events, undecidable};
+}
+function mk(violation, seat, conf, evidence){
+  return {violation, severity:SEV[violation], seat, confidence:conf,
+          message: LABEL[violation] + (seat && seat!=="driver" ? `（${seat}）` : ""),
+          evidence: evidence || "", ts: Date.now()/1000,
+          event_id: Math.random().toString(16).slice(2,10)+Math.random().toString(16).slice(2,10)};
+}
+
+/* ---------- 示例图：全部由 canvas 实时绘制，不引用任何外部资源 ---------- */
+function drawScene(name){
+  const c = $("#shot"), W = 640, H = 480; c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  if(name === "camera_blocked"){
+    g.fillStyle = "#1a1917"; g.fillRect(0,0,W,H);
+    g.fillStyle = "rgba(255,255,255,.05)";
+    for(let i=0;i<60;i++) g.fillRect(Math.random()*W, Math.random()*H, 2, 2);
+    show(c); return c.toDataURL("image/jpeg",.85);
+  }
+  g.fillStyle="#1c1c1e"; g.fillRect(0,0,W,H);
+  g.fillStyle="#34302a"; g.fillRect(0,0,W,150);
+  g.fillStyle="#26221e"; g.fillRect(0,380,W,H-380);
+  g.strokeStyle="#4a4a52"; g.lineWidth=12; g.beginPath(); g.ellipse(190,404,92,70,0,0,Math.PI*2); g.stroke();
+  const obs = SIM[name];
+  for(const o of obs.occupants){
+    const cx = o.seat === "driver" ? 190 : 452;
+    person(g, cx, o.seatbelt.state === "fastened", {
+      phone: o.phone.state === "held_to_ear", cig: o.smoking.state === "cigarette_visible",
+      child: o.apparent_age_group === "child",
+      gaze: o.gaze.state, closed: o.eyes.state === "closed"
+    });
+  }
+  show(c); return c.toDataURL("image/jpeg",.85);
+}
+function show(c){ c.style.display="block"; $("#cam").style.display="none"; }
+function person(g, cx, belt, o){
+  const s = o.child ? .74 : 1, cy = 250 + (o.child ? 26 : 0);
+  const bw = 78*s, bh = 92*s, hr = 47*s;
+  g.fillStyle = "#606c84";
+  g.beginPath(); g.ellipse(cx, cy+118, bw, bh, 0, Math.PI, Math.PI*2); g.fill();
+  g.fillRect(cx-bw, cy+118, bw*2, 130);
+  if(belt){ g.strokeStyle="#22222a"; g.lineWidth=11; g.beginPath();
+    g.moveTo(cx-bw+14, cy+50); g.lineTo(cx+bw-26, cy+128); g.stroke(); }
+  const dx = {left:-17, right:17, down:0, forward:0}[o.gaze] || 0, dy = o.gaze==="down" ? 12 : 0;
+  g.fillStyle="#d6b094"; g.beginPath(); g.arc(cx+dx, cy-hr+dy, hr, 0, Math.PI*2); g.fill();
+  const ey = cy-hr-6+dy;
+  for(const ox of [-17*s, 17*s]){
+    const ex = cx+dx+ox;
+    if(o.closed){ g.strokeStyle="#2a2a2a"; g.lineWidth=4; g.beginPath(); g.moveTo(ex-9,ey); g.lineTo(ex+9,ey); g.stroke(); }
+    else{ g.fillStyle="#fff"; g.beginPath(); g.ellipse(ex,ey,8.5,7.5,0,0,Math.PI*2); g.fill();
+          g.fillStyle="#1e1e1e"; g.beginPath(); g.arc(ex,ey,3.6,0,Math.PI*2); g.fill(); }
+  }
+  const my = cy-14+dy;
+  g.strokeStyle="#7a3c3c"; g.lineWidth=4; g.beginPath(); g.moveTo(cx+dx-13,my); g.lineTo(cx+dx+13,my); g.stroke();
+  if(o.phone){ g.fillStyle="#16161a"; g.strokeStyle="#5aa9e6"; g.lineWidth=2;
+    g.beginPath();
+    // roundRect 在较老的 Safari/WebView 上不存在，降级为直角矩形
+    if(g.roundRect) g.roundRect(cx+dx-hr-26, ey-14, 20, 48, 4);
+    else g.rect(cx+dx-hr-26, ey-14, 20, 48);
+    g.fill(); g.stroke(); }
+  if(o.cig){ g.strokeStyle="#f2f2ea"; g.lineWidth=5; g.beginPath();
+    g.moveTo(cx+dx+13,my); g.lineTo(cx+dx+46,my-8); g.stroke();
+    g.fillStyle="#ff7a28"; g.beginPath(); g.arc(cx+dx+48,my-9,4,0,Math.PI*2); g.fill(); }
+}
+
+/* ---------- 交互 ---------- */
+$("#btnCam").onclick = async () => {
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280}},audio:false});
+    $("#cam").srcObject = stream; $("#cam").style.display="block"; $("#shot").style.display="none";
+    $("#btnShot").disabled = false; $("#btnCam").textContent = "摄像头已开启";
+  }catch(e){
+    $("#btnCam").textContent = "摄像头不可用";
+    alert("无法访问摄像头（"+e.name+"）。\n手机浏览器要求 HTTPS 或 localhost。\n请改用下方的内置示例场景，功能完全一样。");
+  }
+};
+$("#btnShot").onclick = () => {
+  const v = $("#cam"), c = $("#shot");
+  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  show(c);
+  // 真拍的照片本页也无法真推理 —— 按所选场景返回模拟结果，并在结果里标明
+  run($("#scenario").value, true);
+};
+$("#btnSample").onclick = () => { drawScene($("#scenario").value); run($("#scenario").value, false); };
+$("#btnClear").onclick = () => { feed = []; renderFeed(); };
+
+function run(name, fromCamera){
+  $("#events").innerHTML = '<p class="muted"><span class="spin"></span>模型分析中（模拟 ~1.2s 云端往返）…</p>';
+  $("#meta").innerHTML = ""; $("#banner").className = "banner";
+  const t0 = performance.now();
+  setTimeout(() => {
+    const obs = SIM[name];
+    const t_vlm = 900 + Math.random()*700;
+    const r = evaluate(obs);
+    render(obs, r, t_vlm, performance.now()-t0, fromCamera);
+    dispatch(r.events);
+  }, 1150);
+}
+
+function render(obs, r, tVlm, tTotal, fromCamera){
+  const ev = $("#events");
+  ev.innerHTML = r.events.length
+    ? r.events.map(e => `<div class="ev">
+        <div class="t"><span class="dot ${e.severity}"></span>${e.message}</div>
+        <div class="m">等级 <b>${e.severity}</b> · 置信 <b>${(e.confidence*100).toFixed(0)}%</b> · 座位 <b>${e.seat||"—"}</b><br>模型依据：${e.evidence||"—"}</div>
+      </div>`).join("")
+    : '<p class="muted">未检出违规。</p>';
+  banner(r.events);
+
+  const und = r.undecidable.map(u =>
+    `<div class="kv"><span>${LABEL[u.v]||u.v}</span><span>${u.r}</span></div>`).join("");
+  const px = Math.round(896*672/750);
+  $("#meta").innerHTML = `
+    ${fromCamera ? '<div class="notice" style="margin:12px 0">你拍的这张真实照片<b>没有</b>被送去推理 —— 本页离线，无法调用模型。下面的结果来自所选场景的预置数据。真实推理请跑仓库里的 FastAPI 服务。</div>' : ""}
+    <h2 style="margin:14px 0 6px">无法判定（不等于合规）</h2>${und}
+    <h2 style="margin:14px 0 6px">本次运行</h2>
+    <div class="kv"><span>推理来源</span><span>模拟预置返回（非真实模型）</span></div>
+    <div class="kv"><span>模型耗时</span><span>${tVlm.toFixed(0)} ms（模拟）</span></div>
+    <div class="kv"><span>端到端</span><span>${tTotal.toFixed(0)} ms</span></div>
+    <div class="kv"><span>图片</span><span>缩放至 896 长边，约 ${px} 视觉 token</span></div>
+    <details style="margin-top:12px"><summary>查看"模型原始回答"（模拟）与结构化观测</summary>
+      <pre>${JSON.stringify(obs, null, 1).replace(/</g,"&lt;")}</pre></details>`;
+}
+
+function banner(events){
+  const b = $("#banner");
+  if(!events.length){
+    b.className = "banner ok show";
+    b.innerHTML = '检查通过 · 未发现违规<span class="s">判不了的项见上方"无法判定"，它们不等于合规。</span>';
+    return;
+  }
+  const crit = events.some(e => e.severity === "critical");
+  b.className = "banner " + (crit ? "crit" : "warn") + " show";
+  b.innerHTML = (crit ? "⚠ 严重违规 · " : "提醒 · ") + events[0].message +
+    `<span class="s">车内播报已触发${crit ? "（循环 3 次 + 蜂鸣）" : "（提醒 1 次）"}；共 ${events.length} 条事件已上报后台。</span>`;
+  if(navigator.vibrate) navigator.vibrate(crit ? [220,90,220,90,220] : [130]);
+}
+
+function dispatch(events){
+  for(const e of events){
+    if(e.severity !== "info")
+      feed.unshift({ch:"车内", ts:Date.now(), sev:e.severity, text:SPEECH[e.violation]||e.message, ok:true});
+    feed.unshift({ch:"后台", ts:Date.now(), sev:e.severity, text:e.message, ok:true,
+                  detail:`event_id=${e.event_id} mode=mode_a_vlm`});
+  }
+  renderFeed();
+}
+function renderFeed(){
+  const f = $("#feed");
+  if(!feed.length){ f.innerHTML = '<p class="muted">暂无告警。</p>'; return; }
+  f.innerHTML = feed.slice(0,40).map(r => {
+    const t = new Date(r.ts).toLocaleTimeString("zh-CN",{hour12:false});
+    return `<div class="fi"><span class="ch">${r.ch}</span><span class="tx"><b>${r.text}</b><br>${t} · ${r.sev} · ${r.ok?"已投递":"投递失败，落盘待补传"}${r.detail?"<br>"+r.detail:""}</span></div>`;
+  }).join("");
+}
+
+const STEPS = [
+  ["1","图片采集","手机摄像头 getUserMedia / canvas 绘制的示例图",1],
+  ["2","预处理","缩放到长边 896、可选人脸脱敏 —— 本页只做尺寸标注",0],
+  ["3","VLM 抽取视觉属性","<b>本页为预置数据</b>；真实链路调云端 Qwen3-VL，只描述可见事实、不下违规结论",0],
+  ["4","枚举白名单校验","越界值与无依据的结论降级为 unknown",1],
+  ["5","规则层判定违规","与 rules.py 同口径的确定性规则，可审计可调阈值",1],
+  ["6","事件构造","SafetyEvent v1.2，mode=mode_a_vlm，三条路线同一结构",1],
+  ["7","车内提醒","按等级分级：横幅 + navigator.vibrate 震动",1],
+  ["8","后台上报","流水记录；真实链路走 Webhook，断网落盘补传",0]
+];
+$("#steps").innerHTML = STEPS.map(([n,t,d,real]) =>
+  `<div class="st"><span class="n">${n}</span><span><b>${t}</b>
+   <span class="tag ${real?"r":"s"}">${real?"真实逻辑":"本页模拟"}</span><br>${d}</span></div>`).join("");
+renderFeed();
+</script>
+</body>
+</html>
