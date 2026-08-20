@@ -58,6 +58,11 @@ header{padding:max(38px,env(safe-area-inset-top)) 0 22px}
 h1{font-size:31px; line-height:1.18; font-weight:700; letter-spacing:-.028em;
    margin:7px 0 10px; text-wrap:balance}
 .lede{font-size:15.5px; color:var(--ink2); margin:0}
+.facts{display:flex; flex-wrap:wrap; gap:7px; margin-top:15px}
+.facts span{font-size:12.5px; color:var(--ink2); background:var(--card);
+  border:.5px solid var(--hair); border-radius:9px; padding:4px 10px;
+  -webkit-backdrop-filter:blur(20px) saturate(180%); backdrop-filter:blur(20px) saturate(180%)}
+.facts b{font-weight:640; color:var(--ink); font-variant-numeric:tabular-nums}
 
 .group{margin:22px 0}
 .group > h2{font-size:13px; font-weight:600; color:var(--ink3); letter-spacing:.01em;
@@ -90,6 +95,11 @@ a.route:focus-visible{outline:2.5px solid var(--blue); outline-offset:3px}
 .tag{font-size:12px; font-weight:520; color:var(--ink2); background:var(--card-solid);
   border:.5px solid var(--edge); padding:3.5px 9px; border-radius:8px; letter-spacing:0}
 .tag.on{color:var(--green)} .tag.off{color:var(--ink3)}
+.mx{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:12px}
+.mx div{background:var(--card-solid); border:.5px solid var(--edge); border-radius:11px; padding:8px 9px}
+.mx .k{font-size:10.5px; color:var(--ink3); letter-spacing:.01em}
+.mx .v{font-size:14.5px; font-weight:620; letter-spacing:-.02em; margin-top:1px;
+  font-variant-numeric:tabular-nums}
 
 .note{padding:15px 17px; display:flex; gap:12px; align-items:flex-start}
 .note .dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:7px;background:var(--orange)}
@@ -116,6 +126,11 @@ footer code{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12.5px
   <h1>三条技术路线<br>同一套安全标准</h1>
   <p class="lede">驾驶员危险驾驶、乘客安全带、双向告警。甲方需求尚未定型，
     因此三条路线并行做到可运行、可演示，共用同一套事件与告警契约，随时可比可换。</p>
+  <div class="facts">
+    <span>违规类型 <b>15</b></span>
+    <span>告警等级 <b>3</b></span>
+    <span>测试 <b>89</b> 项通过</span>
+  </div>
 </header>
 
 <div class="group">
@@ -123,18 +138,43 @@ footer code{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12.5px
   <a class="route glass" href="mode-a.html">
     <div class="rt"><span class="badge">A</span><b>大模型理解图片</b><span class="chev">›</span></div>
     <p>拍一张照片交给云端视觉大模型，直接读出画面里的违规。改一句提示词就能加一条新规则。</p>
+    <div class="mx">
+      <div><div class="k">告警延迟</div><div class="v">28 s</div></div>
+      <div><div class="k">基准误报</div><div class="v" style="color:var(--green)">0</div></div>
+      <div><div class="k">加新规则</div><div class="v">改提示词</div></div>
+    </div>
     <div class="tags"><span class="tag">发车前检查</span><span class="tag">云端复核</span><span class="tag off">断网不可用</span></div>
   </a>
   <a class="route glass" href="mode-b.html">
     <div class="rt"><span class="badge">B</span><b>后台服务器监测</b><span class="chev">›</span></div>
     <p>车端推流到后台 GPU 统一推理，车队级看板、违规排行、驾驶员评分与事件复核都在这里。</p>
+    <div class="mx">
+      <div><div class="k">告警延迟</div><div class="v">5.2 s</div></div>
+      <div><div class="k">基准误报</div><div class="v" style="color:var(--green)">0</div></div>
+      <div><div class="k">单卡并发</div><div class="v">6–32 路</div></div>
+    </div>
     <div class="tags"><span class="tag">车队汇总</span><span class="tag">集中运维</span><span class="tag off">断网不可用</span></div>
   </a>
   <a class="route glass" href="mode-c.html">
     <div class="rt"><span class="badge">C</span><b>车载嵌入式设备</b><span class="chev">›</span></div>
     <p>算力放在车里，本地实时判定、本地语音提醒。隧道地库断网照常工作，影像不出车。</p>
+    <div class="mx">
+      <div><div class="k">告警延迟</div><div class="v">5.6 s</div></div>
+      <div><div class="k">基准误报</div><div class="v" style="color:var(--green)">0</div></div>
+      <div><div class="k">单帧耗时</div><div class="v">19 ms</div></div>
+    </div>
     <div class="tags"><span class="tag on">断网可用</span><span class="tag on">影像不出车</span><span class="tag">低延迟</span></div>
   </a>
+</div>
+
+<div class="group">
+  <h2>怎么读上面的数字</h2>
+  <div class="glass note">
+    <span class="dot" style="background:var(--blue)"></span>
+    <p>三条路线跑的是<b>同一份素材、同一套标注、同一个打分脚本</b>，所以延迟和误报可以横向比。
+      <b>但检出率不能比</b>——素材是合成画面，云端大模型把安全带认成了「一根细长的棍子」，
+      它不在模型见过的世界里。各自在真实素材上的表现，见仓库里的对比文档。</p>
+  </div>
 </div>
 
 <div class="group">
