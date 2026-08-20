@@ -48,22 +48,36 @@ def seatbelt_score(img: np.ndarray, person: PersonObs, kp_thr: float = 1.0) -> t
     rh = person.kp("right_hip", kp_thr)
     if ls is None or rs is None:
         return 0.0, None
-    # 髋部常被方向盘/仪表台挡住，缺失时用肩宽外推一个躯干高度
+    # 髋部在舱内画面里几乎总是被方向盘/仪表台挡住，必须能在缺髋点时工作。
+    # 外推的落点还要**夹到人体框和画面之内**：坐姿特写里 1.6 倍肩宽往下常常已经出画，
+    # 采样线一旦大半落在画面外，对比度就恒为 0 —— 这正是「有安全带却检不出」的典型成因。
     shoulder_w = abs(ls[0] - rs[0]) or 1.0
+    img_h = float(img.shape[0])
+    bottom = min(person.box.y2, img_h - 1.0)
+    drop = min(1.6 * shoulder_w, max(24.0, bottom - max(ls[1], rs[1])))
     if lh is None:
-        lh = (ls[0], ls[1] + 1.6 * shoulder_w)
+        lh = (ls[0], ls[1] + drop)
     if rh is None:
-        rh = (rs[0], rs[1] + 1.6 * shoulder_w)
+        rh = (rs[0], rs[1] + drop)
+    lh = (lh[0], min(lh[1], img_h - 1.0))
+    rh = (rh[0], min(rh[1], img_h - 1.0))
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     offset = max(3.0, 0.10 * shoulder_w)
 
+    # 髋部落点本来就是估计值（舱内画面几乎看不到髋），所以不只试两条对角线，
+    # 而是让下端在躯干宽度内扫过若干位置，取响应最强的一条。
+    # 这样即使肩/髋关键点有十几像素的偏差，织带也不会被采样线整条错过。
+    hip_y = (lh[1] + rh[1]) / 2.0
+    center_x = (ls[0] + rs[0]) / 2.0
     best, best_pts = 0.0, None
-    for a, b in ((ls, rh), (rs, lh)):
-        s = _line_contrast(gray, a, b, offset, w, h)
-        if s > best:
-            best, best_pts = s, (a, b)
+    for top, opp_x in ((ls, rh[0]), (rs, lh[0])):
+        for f in (0.0, 0.25, 0.5, 0.75):
+            bx = opp_x + (center_x - opp_x) * f
+            score = _line_contrast(gray, top, (bx, hip_y), offset, w, h)
+            if score > best:
+                best, best_pts = score, (top, (bx, hip_y))
 
     box = None
     if best_pts is not None:
@@ -94,9 +108,14 @@ def _line_contrast(gray: np.ndarray, a: tuple[float, float], b: tuple[float, flo
         return 0.0
     on, l1, l2 = on[valid], l1[valid], l2[valid]
 
-    diff = np.abs(on - (l1 + l2) / 2.0)
-    # 织带是连续的：要求沿线对比度稳定（用中位数而非均值，抗局部高光）
-    consistency = float(np.median(diff))
+    # 关键约束：安全带是一条**带**，必须同时比左右两侧都亮（或都暗）。
+    # 只用 |on - 两侧均值| 的话，衣服上的一条明暗交界（西装翻领、衬衫褶皱）
+    # 也会拿到很高的分——这是把「没系带」误判成「系了带」的主要来源。
+    d1, d2 = on - l1, on - l2
+    same_side = np.sign(d1) == np.sign(d2)
+    band = np.minimum(np.abs(d1), np.abs(d2)) * same_side
+    # 织带是连续的：沿线取中位数而非均值，抗局部高光与遮挡
+    consistency = float(np.median(band))
     return float(np.clip(consistency / 110.0, 0.0, 1.0))
 
 

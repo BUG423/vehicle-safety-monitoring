@@ -43,6 +43,8 @@ def main() -> int:
     ap.add_argument("--backend", default="cartoon",
                     help="yolo | torchvision | cartoon | mock | auto")
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--short-side", type=int, default=None,
+                    help="推理输入短边。手机这类小目标对它极敏感：480 时置信 0.43、640 时 0.75")
     ap.add_argument("--face", action="store_true", help="启用 MediaPipe 人脸模块（真实 EAR/PERCLOS）")
     ap.add_argument("--fps", type=float, default=0.0, help="覆盖视频帧率，用于换算 clip_t")
     ap.add_argument("--stride", type=int, default=1, help="抽帧间隔，1 表示逐帧")
@@ -54,6 +56,8 @@ def main() -> int:
     cfg = Config()
     cfg.perception.backend = args.backend
     cfg.perception.device = args.device
+    if args.short_side:
+        cfg.perception.infer_short_side = args.short_side
     det = build_detector(cfg.perception)
     if not args.quiet:
         print(f"[run_clip] 后端: {det.describe()}")
