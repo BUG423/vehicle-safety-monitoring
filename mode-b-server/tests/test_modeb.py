@@ -512,3 +512,31 @@ def test_事件带文字依据便于隐私友好的复核(tmp_path):
     cap.release()
     assert got
     assert any(e.evidence.evidence_text for e in got), "确认违规也要给出文字依据"
+
+
+def test_老库能就地迁移出decision列(tmp_path):
+    """演示环境里 runs/modeb.db 常常是上一版留下的，升级不能把它打挂。"""
+    import sqlite3
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.executescript("""
+        CREATE TABLE events (event_id TEXT PRIMARY KEY, ts REAL NOT NULL, vehicle_id TEXT NOT NULL,
+            violation TEXT NOT NULL, severity TEXT NOT NULL, role TEXT, seat TEXT, confidence REAL,
+            duration_s REAL, message TEXT, mode TEXT, raw_json TEXT NOT NULL, evidence_path TEXT,
+            review_status TEXT NOT NULL DEFAULT 'pending', review_note TEXT, reviewed_at REAL);
+        CREATE TABLE vehicles (vehicle_id TEXT PRIMARY KEY, plate TEXT, fleet TEXT,
+            driver_name TEXT, driver_id TEXT, source_kind TEXT, status TEXT,
+            registered_at REAL, last_seen REAL, meta_json TEXT);
+    """)
+    con.execute(f"INSERT INTO events VALUES('old1',{time.time()},'V','driver.fatigue','critical','driver',"
+                "'driver',0.9,4.0,'旧事件','mode_b_server','{\"violation\":\"driver.fatigue\"}',"
+                "NULL,'pending',NULL,NULL)")
+    con.commit()
+    con.close()
+
+    store = EventStore(db)                        # 不应抛异常
+    cols = {r["name"] for r in store._conn.execute("PRAGMA table_info(events)")}  # noqa: SLF001
+    assert "decision" in cols
+    assert store.overview()["events"] == 1        # 老事件默认按 confirmed 处理
+    assert store.overview()["undecidable"] == 0
+    store.close()

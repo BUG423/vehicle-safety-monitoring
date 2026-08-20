@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-_SCHEMA = """
+_SCHEMA_TABLES = """
 CREATE TABLE IF NOT EXISTS events (
     event_id      TEXT PRIMARY KEY,
     ts            REAL NOT NULL,
@@ -37,13 +37,6 @@ CREATE TABLE IF NOT EXISTS events (
     review_note   TEXT,
     reviewed_at   REAL
 );
-CREATE INDEX IF NOT EXISTS idx_events_ts        ON events(ts DESC);
-CREATE INDEX IF NOT EXISTS idx_events_vehicle   ON events(vehicle_id, ts DESC);
-CREATE INDEX IF NOT EXISTS idx_events_violation ON events(violation, ts DESC);
-CREATE INDEX IF NOT EXISTS idx_events_review    ON events(review_status, ts DESC);
--- 「判不了」的记录必须能被单独查出来：它既不能混进违规统计，也绝不能被当成合规而丢掉
-CREATE INDEX IF NOT EXISTS idx_events_decision  ON events(decision, ts DESC);
-
 CREATE TABLE IF NOT EXISTS vehicles (
     vehicle_id   TEXT PRIMARY KEY,
     plate        TEXT,
@@ -56,7 +49,18 @@ CREATE TABLE IF NOT EXISTS vehicles (
     last_seen    REAL,
     meta_json    TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_vehicles_seen ON vehicles(last_seen DESC);
+"""
+
+# 索引单独一段：必须在 `_migrate()` 给老库补完列之后再建，
+# 否则 `idx_events_decision` 会在还没有 decision 列的老库上直接报错。
+_SCHEMA_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_events_ts        ON events(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_vehicle   ON events(vehicle_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_violation ON events(violation, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_review    ON events(review_status, ts DESC);
+-- 「判不了」的记录必须能被单独查出来：它既不能混进违规统计，也绝不能被当成合规而丢掉
+CREATE INDEX IF NOT EXISTS idx_events_decision  ON events(decision, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_vehicles_seen    ON vehicles(last_seen DESC);
 """
 
 # 违规扣分表 —— 驾驶员安全评分的依据。分值按「是否直接致命」排序，
@@ -91,8 +95,9 @@ class EventStore:
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
-        self._migrate()
+        self._conn.executescript(_SCHEMA_TABLES)
+        self._migrate()                                  # 老库补列，必须在建索引之前
+        self._conn.executescript(_SCHEMA_INDEXES)
         self._conn.execute("PRAGMA journal_mode=WAL")   # 写入与看板查询并发
         self._conn.commit()
 
