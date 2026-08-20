@@ -22,8 +22,8 @@ _ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from common import (AlertDispatcher, DetectionMode, Evidence, SafetyEvent,  # noqa: E402
-                    Subject, VehicleContext, ViolationConfirmer)
+from common import (AlertDispatcher, Decision, DetectionMode, Evidence,  # noqa: E402
+                    SafetyEvent, Severity, Subject, VehicleContext, ViolationConfirmer)
 
 from ..config import Config  # noqa: E402
 from ..perception.base import IoUTracker, PerceptionResult, assign_seats  # noqa: E402
@@ -81,6 +81,9 @@ class VehiclePipeline:
         self.rules = ViolationRuleEngine(cfg.rules, face_module=face_module,
                                          kp_thr=cfg.perception.keypoint_score_thr)
         self.confirmer = ViolationConfirmer()
+        # 「判不了」也要收敛：偶尔一帧看不清不值得上报，持续看不清才说明检查真的没完成。
+        # 复用同一套滑窗投票/最短时长/冷却机制，只是喂进去的是「不可判定」而不是「违规」。
+        self.undecidable_confirmer = ViolationConfirmer()
         self.dispatcher = dispatcher
         self.on_event = on_event
         self.evidence_max_side = evidence_max_side
@@ -89,7 +92,8 @@ class VehiclePipeline:
         self.model_version = model_version or "unknown"
         self.context: VehicleContext | None = None
         self.last_hits: list[RawHit] = []
-        self.active: dict[str, dict[str, Any]] = {}   # 当前处于违规态的项，供看板显示实时状态
+        self.active: dict[str, dict[str, Any]] = {}    # 当前处于违规态的项
+        self.unchecked: dict[str, dict[str, Any]] = {}  # 当前「判不了」的检查项，供看板单独呈现
 
     def set_context(self, ctx: VehicleContext | None) -> None:
         self.context = ctx
@@ -112,9 +116,29 @@ class VehiclePipeline:
         # 安全带类**刻意不门控**——甲方要的正是「发车前的静止检查」。
         speed = ctx.speed_kmh if ctx is not None else None
         for hit in hits:
+            slot = f"{hit.violation.value}@{hit.key}"
+
+            if not hit.decidable:
+                # 关键：**不要**往主确认器里喂 hit=False。
+                # 「判不了」不是「没违规」，喂 False 会把滑窗污染成「合规证据」，
+                # 甚至把一个已经进入违规态的项目错误地判为恢复。
+                u = self.undecidable_confirmer.update(hit.violation, True, confidence=1.0,
+                                                      key=hit.key, now=now)
+                if u.active:
+                    self.unchecked[slot] = {"violation": hit.violation.value, "key": hit.key,
+                                            "label": hit.violation.label_zh,
+                                            "duration_s": round(u.duration_s, 1),
+                                            "reason": hit.reason}
+                if u.should_alert:
+                    events.append(self._build_event(frame, res, hit, u,
+                                                    decision=Decision.UNDECIDABLE))
+                continue
+
+            self.unchecked.pop(slot, None)
+            self.undecidable_confirmer.update(hit.violation, False, key=hit.key, now=now)
+
             c = self.confirmer.update(hit.violation, hit.hit, confidence=hit.confidence,
                                       key=f"{hit.key}", now=now, speed_kmh=speed)
-            slot = f"{hit.violation.value}@{hit.key}"
             if c.active:
                 self.active[slot] = {"violation": hit.violation.value, "key": hit.key,
                                      "label": hit.violation.label_zh,
@@ -138,7 +162,8 @@ class VehiclePipeline:
         return events
 
     # -- 事件构造 -----------------------------------------------------------
-    def _build_event(self, frame: Frame, res: PerceptionResult, hit: RawHit, c: Any) -> SafetyEvent:
+    def _build_event(self, frame: Frame, res: PerceptionResult, hit: RawHit, c: Any,
+                     decision: Decision = Decision.CONFIRMED) -> SafetyEvent:
         signals = dict(hit.signals)
         signals.update({
             "backend": res.backend,
@@ -152,12 +177,20 @@ class VehiclePipeline:
         if self.context is not None and self.context.speed_kmh is not None:
             signals["speed_kmh"] = self.context.speed_kmh
 
+        # 「判不了」统一降到 INFO：它不是对驾驶员的指控，而是给管理者的数据质量信号。
+        # InCabinChannel 本身也会跳过 UNDECIDABLE，两处都不打扰当事人。
+        severity = Severity.INFO if decision is Decision.UNDECIDABLE else c.severity
+        message = (f"未完成检查：{hit.violation.label_zh}（{hit.reason}）"
+                   if decision is Decision.UNDECIDABLE else "")
+
         return SafetyEvent(
             violation=hit.violation,
             vehicle_id=self.vehicle_id,
             mode=DetectionMode.SERVER,
             ts=res.ts,
-            severity=c.severity,
+            decision=decision,
+            message=message,
+            severity=severity,
             subject=Subject(role=hit.role, seat=hit.seat, track_id=hit.track_id),
             confidence=round(float(c.confidence), 4),
             duration_s=round(float(c.duration_s), 2),
@@ -166,6 +199,8 @@ class VehiclePipeline:
                 bbox=hit.bbox,
                 captured_at=frame.ts,
                 model_version=self.model_version,
+                # 文字依据让管理者读一行字就能复核，不必调阅车内录像 —— 隐私友好
+                evidence_text=hit.evidence_text or None,
             ),
             raw_signals=signals,
         )

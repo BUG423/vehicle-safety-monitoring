@@ -29,7 +29,7 @@ _ROOT = _HERE.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from common import AlertDispatcher, BackendChannel, InCabinChannel  # noqa: E402
+from common import AlertDispatcher, BackendChannel, Decision, InCabinChannel  # noqa: E402
 
 from modeb.config import Config  # noqa: E402
 from modeb.engine.pipeline import VehiclePipeline  # noqa: E402
@@ -51,6 +51,9 @@ def main() -> int:
     ap.add_argument("--vehicle", default="CLIP-001")
     ap.add_argument("--out", default="runs/mode_b_events.jsonl")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--include-undecidable", action="store_true",
+                    help="把「判不了」的记录也写进 JSONL。默认不写——"
+                         "bench 评的是违规检出，把未完成的检查混进去会被算成误报")
     args = ap.parse_args()
 
     cfg = Config()
@@ -80,6 +83,7 @@ def main() -> int:
     fh = out_path.open("w", encoding="utf-8")
 
     events_seen: list = []
+    undecidable_seen: list = []
     cabin_prompts: list = []
     dispatcher = AlertDispatcher(channels=[
         InCabinChannel(sink=lambda p: cabin_prompts.append(p)),
@@ -87,12 +91,18 @@ def main() -> int:
     ])
 
     def on_event(ev) -> None:
-        events_seen.append(ev)
-        fh.write(ev.to_json(drop_b64=True) + "\n")
+        undecidable = ev.decision is Decision.UNDECIDABLE
+        (undecidable_seen if undecidable else events_seen).append(ev)
+        if not undecidable or args.include_undecidable:
+            fh.write(ev.to_json(drop_b64=True) + "\n")
         if not args.quiet:
             t = ev.raw_signals.get("clip_t")
-            print(f"  [事件] t={t:>6}s  {ev.violation.label_zh:<12} "
-                  f"{ev.severity.value:<8} 持续{ev.duration_s:.1f}s 置信{ev.confidence}")
+            if undecidable:
+                why = ev.raw_signals.get("undecidable_reason", "")
+                print(f"  [未完成] t={t:>6}s  {ev.violation.label_zh:<12} {why}")
+            else:
+                print(f"  [事件] t={t:>6}s  {ev.violation.label_zh:<12} "
+                      f"{ev.severity.value:<8} 持续{ev.duration_s:.1f}s 置信{ev.confidence}")
 
     d = det.describe()
     version = f"{d.get('name')}/{d.get('pose_model') or d.get('kind')}" + ("+face478" if face else "")
@@ -127,7 +137,10 @@ def main() -> int:
     wall = time.time() - t_start
     print(f"\n[run_clip] 处理 {processed} 帧 / 视频 {idx / fps:.1f}s，"
           f"墙钟 {wall:.1f}s（{processed / max(wall, 1e-6):.1f} FPS）")
-    print(f"[run_clip] 事件 {len(events_seen)} 条 -> {out_path}")
+    print(f"[run_clip] 确认违规 {len(events_seen)} 条 -> {out_path}")
+    print(f"[run_clip] 未完成的检查 {len(undecidable_seen)} 条"
+          f"（{'已' if args.include_undecidable else '未'}写入 JSONL —— "
+          f"bench 评的是违规检出，混进去会被算成误报）")
     print(f"[run_clip] 车内播报 {len(cabin_prompts)} 次")
     if face is not None:
         print(f"[run_clip] 人脸模块命中 {pipe.rules.face_hit} 帧 / 失败 {pipe.rules.face_miss} 帧")

@@ -62,7 +62,7 @@ h2 .n{font-weight:400;font-size:11.5px;color:var(--faint)}
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 
 /* KPI */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:13px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:9px;margin-bottom:13px}
 .kpi{padding:12px 8px;text-align:center}
 .kpi .v{font-size:22px;font-weight:600;letter-spacing:-.03em;line-height:1.1}
 .kpi .k{font-size:10px;color:var(--muted);margin-top:3px}
@@ -166,6 +166,7 @@ footer{text-align:center;color:var(--faint);font-size:11px;padding:6px 0 4px;lin
   <div class="glass kpi"><div class="v" id="k-online">—</div><div class="k">在线车辆</div></div>
   <div class="glass kpi"><div class="v" id="k-ev">0</div><div class="k">今日告警</div></div>
   <div class="glass kpi"><div class="v" id="k-crit" style="color:var(--crit)">0</div><div class="k">严重</div></div>
+  <div class="glass kpi"><div class="v" id="k-unchk" style="color:var(--violet)">0</div><div class="k">未完成检查</div></div>
   <div class="glass kpi"><div class="v" id="k-score">—</div><div class="k">车队评分</div></div>
 </div>
 
@@ -226,6 +227,20 @@ footer{text-align:center;color:var(--faint);font-size:11px;padding:6px 0 4px;lin
 </section>
 
 <section class="glass">
+  <h2>未完成的检查 <span class="n" id="n-unchk">0 条</span></h2>
+  <div class="stream" id="unchk" style="max-height:190px">
+    <div style="color:var(--faint);font-size:12.5px;padding:8px 2px">全部检查项均已完成</div>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:11px 0 0;line-height:1.6">
+    <b>「判不了」和「没违规」是两回事。</b>把摄像头挡住两秒试试 ——
+    遮挡本身会告警，同时安全带、疲劳等检查会转为「未完成」。
+    如果后台此时只是「没收到违规事件」，就会被读成检查通过而放行，这是最危险的失败模式。
+    这类记录照常上报后台、单独统计，但<b>不打扰驾驶员</b>（对他没有可执行动作），
+    也不计入违规统计与驾驶员评分。
+  </p>
+</section>
+
+<section class="glass">
   <h2>违规类型分布 <span class="n">近 24 小时</span></h2>
   <div id="chart-bar"></div>
 </section>
@@ -265,6 +280,8 @@ footer{text-align:center;color:var(--faint);font-size:11px;padding:6px 0 4px;lin
     <li><b>服务器端已实测：</b>真模型在真实人像素材上 3/3 检出、0 误报、平均告警延迟 2.98 秒；
         合成基准素材上 4/4 检出、0 误报，6 次眨眼与 3 次短暂低头干扰项全部未触发告警。
         详见仓库 <code>mode-b-server/README.md</code>。</li>
+    <li><b>真实：</b>遮挡镜头时，安全带 / 疲劳 / 手机 / 分心会真实转为「未完成检查」
+        （decision=undecidable），照常上报后台但不播报给驾驶员，也不计入违规统计与评分。</li>
     <li><b>能力边界：</b>超速无法从图像判断，必须接 OBD / CAN / GPS 信号；
         本页所有超速事件均为模拟。</li>
   </ul>
@@ -346,6 +363,8 @@ class Confirmer {
   }
 }
 const confirmer = new Confirmer();
+// 第二个确认器专收「判不了」：偶尔一帧看不清不值得上报，持续看不清才说明检查真的没完成
+const undecided = new Confirmer();
 
 /* ============================================================
    3. 双通道告警分发 —— common/alerting/channels.py 的等价实现
@@ -354,7 +373,8 @@ let nCabin = 0, nBackend = 0, allEvents = [], evSeq = 0;
 
 function dispatch(ev){
   const ok = {in_cabin:false, backend:false};
-  if (ev.severity !== 'info'){ inCabin(ev); ok.in_cabin = true; }
+  // 契约层语义：decision=undecidable 照常上报后台，但不播报给驾驶员
+  if (ev.decision !== 'undecidable' && ev.severity !== 'info'){ inCabin(ev); ok.in_cabin = true; }
   else ok.in_cabin = true;
   backend(ev); ok.backend = true;
   ev.channels = ok;
@@ -385,11 +405,30 @@ function speak(text, repeat){
   }catch(e){}
 }
 
+let nUnchecked = 0;
 function backend(ev){                      // 后台：入流水 + 计数 + 统计
   nBackend++; $('#c-backend').innerHTML = nBackend + ' <span style="font-size:11px;color:var(--muted)">条</span>';
   allEvents.unshift(ev); if (allEvents.length > 400) allEvents.pop();
+  if (ev.decision === 'undecidable'){ renderUnchecked(ev); return; }   // 不进违规统计
   renderEvent(ev);
   bump(ev);
+}
+
+function renderUnchecked(ev){
+  nUnchecked++; $('#k-unchk').textContent = nUnchecked;
+  $('#n-unchk').textContent = nUnchecked + ' 条';
+  const box = $('#unchk');
+  if (!box.querySelector('.ev')) box.innerHTML = '';
+  const meta = V[ev.violation] || {zh:ev.violation};
+  const el = document.createElement('div');
+  el.className = 'ev new';
+  el.onclick = () => openSheet(ev);
+  el.innerHTML = `<div class="bar" style="background:var(--violet)"></div>
+    <div class="body"><div class="ti">未完成：${meta.zh}</div>
+    <div class="mt">${ev.vehicle} · ${ev.reason || '原因未记录'}</div></div>
+    <div class="rt">${new Date(ev.ts * 1000).toLocaleTimeString('zh-CN',{hour12:false})}</div>`;
+  box.insertBefore(el, box.firstChild);
+  while (box.children.length > 30) box.removeChild(box.lastChild);
 }
 
 /* ============================================================
@@ -397,11 +436,15 @@ function backend(ev){                      // 后台：入流水 + 计数 + 统�
    ============================================================ */
 function makeEvent(violation, vehicle, c, extra){
   const meta = V[violation] || {zh:violation, sev:'warn'};
+  const decision = (extra && extra.decision) || 'confirmed';
   return {
     id: 'e' + (++evSeq),
     ts: Date.now() / 1000,
-    violation, vehicle,
-    severity: (c && c.sev) || meta.sev,
+    violation, vehicle, decision,
+    // 「判不了」统一降到 info：它不是对驾驶员的指控，而是给管理者的数据质量信号
+    severity: decision === 'undecidable' ? 'info' : ((c && c.sev) || meta.sev),
+    reason: (extra && extra.reason) || '',
+    evidence_text: (extra && extra.evidence_text) || '',
     duration_s: c ? +c.dur.toFixed(1) : 0,
     confidence: c ? c.confidence : 0.9,
     mode: 'mode_b_server',
@@ -530,8 +573,23 @@ function loop(){
                       {mean:+m.mean.toFixed(1), tex:+m.tex.toFixed(2), mov:+m.mov.toFixed(2),
                        method:'亮度 + 纹理能量阈值（本机真实计算）'});
 
-    // 模拟输入驱动的三项：判定是模拟的，确认逻辑是真的
+    // 镜头被挡住时，其余检查全部「判不了」——注意**不能**往主确认器喂 hit=false，
+    // 那等于把「看不见」当成「合规证据」。这里改喂另一个确认器。
+    const REASON = '摄像头被遮挡或画面无有效纹理';
     for (const key of Object.keys(manual)){
+      if (blk){
+        const u = undecided.update(key, true, now, 1);
+        if (u.alert){
+          const ev = makeEvent(key, LOCAL_VEHICLE, u,
+            {real:true, decision:'undecidable', reason:REASON,
+             evidence_text:`未能完成「${(V[key]||{}).zh||key}」检查：${REASON}`,
+             signals:{undecidable_reason:REASON, mean:+m.mean.toFixed(1), tex:+m.tex.toFixed(2)}});
+          dispatch(ev);
+        }
+        continue;
+      }
+      undecided.update(key, false, now, 1);
+      // 模拟输入驱动的三项：判定是模拟的，确认逻辑是真的
       const hit = manual[key] > Date.now();
       const cc = confirmer.update(key, hit, now, 0.9);
       if (cc.alert) fire(key, cc, false, {method:'手机端模拟输入（真实判定需服务器 GPU 模型）'});
@@ -694,9 +752,12 @@ function openSheet(ev){
   const sig = Object.entries(ev.signals || {})
     .map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join('')
     || '<div class="kv"><span>（无附加信号）</span><span></span></div>';
+  const und = ev.decision === 'undecidable';
   $('#sheet').innerHTML = `<div class="grab"></div>
-    <h2 style="font-size:18px">${meta.zh}
+    <h2 style="font-size:18px">${und ? '未完成检查：' : ''}${meta.zh}
       <span class="tag ${ev.real ? 'real' : 'sim'}"><i class="dot"></i>${ev.real ? '本机真实判定' : '模拟数据'}</span></h2>
+    ${ev.evidence_text ? `<div class="kv"><span>文字依据</span><span>${ev.evidence_text}</span></div>` : ''}
+    <div class="kv"><span>可判定性</span><span style="color:${und ? 'var(--violet)' : 'var(--ok)'}">${und ? 'undecidable · 判不了' : 'confirmed · 确认违规'}</span></div>
     <div class="kv"><span>车辆</span><span>${ev.vehicle}</span></div>
     <div class="kv"><span>时间</span><span>${new Date(ev.ts * 1000).toLocaleString('zh-CN',{hour12:false})}</span></div>
     <div class="kv"><span>严重等级</span><span style="color:${st.color}">${ev.severity}</span></div>

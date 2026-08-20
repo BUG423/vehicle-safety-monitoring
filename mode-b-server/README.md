@@ -87,7 +87,7 @@ python3 -m modeb.tools.vehicle_agent \
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/v1/events` | 外部直接上报已确认事件（**模式A/C 混合部署的汇合点**） |
-| GET | `/api/v1/events` | 查询，支持 `vehicle_id` / `violation` / `severity` / `review_status` / `since_s` / `limit` |
+| GET | `/api/v1/events` | 查询，支持 `vehicle_id` / `violation` / `severity` / `review_status` / **`decision`** / `since_s` / `limit` |
 | GET | `/api/v1/events/{id}` | 单条详情（含完整 `raw_signals`） |
 | GET | `/api/v1/events/{id}/evidence` | 证据帧 JPEG |
 | POST | `/api/v1/events/{id}/review` | 复核：`confirmed` / `dismissed` / `appealed` |
@@ -101,6 +101,7 @@ python3 -m modeb.tools.vehicle_agent \
 | GET | `/api/v1/stats/vehicles` | 车辆违规排行（按加权扣分，不按条数） |
 | GET | `/api/v1/stats/drivers` | 驾驶员安全评分（100 分制，按人聚合） |
 | GET | `/api/v1/stats/timeline` | 时段趋势 |
+| GET | `/api/v1/stats/data_quality` | **检查完成度**：哪些检查没做完、为什么、哪些车最严重 |
 | GET | `/api/v1/system` | 感知后端、降级记录、调度器统计、各车流水线指标 |
 
 ### 实时推送
@@ -119,7 +120,49 @@ python3 -m modeb.tools.vehicle_agent \
 
 ---
 
-## 4. 感知后端
+## 4. 「判不了」必须和「没违规」分开
+
+契约层 1.2 引入了 `Decision`，本路线全链路接入：
+
+```
+Decision.CONFIRMED     确认违规    → 车内播报 + 后台告警 + 计入统计与评分
+Decision.UNDECIDABLE   判不了      → 只上报后台 + 单独统计，不打扰驾驶员、不计入违规
+```
+
+**为什么这件事比它看起来重要**：发车前摄像头被贴住，如果后台只是「没收到安全带事件」，
+会被读成「检查通过」而放行 —— 这是整套系统最危险的失败模式，而且它是静默的。
+
+本路线在这些情况下产出 `UNDECIDABLE` 而不是「合规」：
+
+| 情况 | 影响的检查 |
+|---|---|
+| 摄像头被遮挡 / 画面无纹理 | 安全带、疲劳、分心、手机（全部视觉项） |
+| 驾驶位未检出人员 | 驾驶员的四项检查 |
+| 肩部关键点不可见（侧身/截断） | 安全带 |
+| 眼部区域不可见（低头/墨镜/光线不足） | 疲劳 |
+| 面部关键点不足，头姿解不出 | 分心 |
+| 头部位置圈不定 | 手机 |
+| 未接 OBD/GPS 车速信号 | 超速 |
+
+三个关键实现细节：
+
+1. **「判不了」的帧绝不喂进违规判定的滑窗。** 喂 `hit=False` 等于把「看不见」
+   当成合规证据，甚至会让一个已经进入违规态的项目被错误判为恢复。
+   实现上另起一个确认器专收「判不了」，同样做滑窗投票与最短时长收敛 ——
+   偶尔一帧看不清不值得上报，持续看不清才说明检查真的没完成。
+2. **统计口径彻底分开。** `overview` / 违规排行 / 驾驶员评分 / 时段趋势
+   **只统计 CONFIRMED**；`UNDECIDABLE` 走 `/api/v1/stats/data_quality`，
+   作为设备健康与数据质量指标呈现。混在一起会同时犯两个错：误报率虚高，以及更糟的 ——
+   漏检被当成合规。
+3. **看板能分别回答「这车没问题」和「这车没看清」。** 车队卡片上「未完成」用紫色标签，
+   与红/黄的违规标签视觉上就分得开。
+
+实测（全黑画面模拟摄像头被贴住，12 秒）：
+产出 1 条 `system.camera_blocked`（CONFIRMED、WARN、播报给驾驶员）
++ 5 条 `UNDECIDABLE`（安全带×2、疲劳、分心、手机，全部 INFO、**不播报**），
+且违规判定滑窗内**没有任何样本**（不是「样本全是合规」）。
+
+## 5. 感知后端
 
 | 后端 | 内容 | 适用 |
 |---|---|---|
@@ -137,12 +180,12 @@ python3 -m modeb.tools.vehicle_agent \
 
 ---
 
-## 5. 实测到什么程度
+## 6. 实测到什么程度
 
 > **两类实测严格分开，不混用。** 合成素材评的是**告警链路与时序逻辑**，
 > 真实素材评的是**真模型的能力**。合成素材上的数字**不代表**真实场景精度。
 
-### 5.1 链路与时序逻辑（`bench/` 公共基准，合成卡通素材，`cartoon` 后端）
+### 6.1 链路与时序逻辑（`bench/` 公共基准，合成卡通素材，`cartoon` 后端）
 
 ```bash
 python3 -m modeb.tools.run_clip --video ../bench/clips/scenario_a.mp4 \
@@ -175,7 +218,7 @@ cd .. && python3 bench/score.py --truth bench/clips/scenario_a_truth.json \
 真的改变头部姿态，我们的头姿通路在这段素材上等于没有输入，
 因此「没被低头骗到」**不构成对头姿分心判定的有效检验**。
 
-### 5.2 真模型能力（真实素材，`yolo` + MediaPipe 后端）
+### 6.2 真模型能力（真实素材，`yolo` + MediaPipe 后端）
 
 ```bash
 python3 -m modeb.tools.fetch_samples          # 下载公开真实素材
@@ -221,7 +264,7 @@ cd .. && python3 bench/score.py --truth mode-b-server/samples/real_cockpit_truth
 人是静态照片，没有真实的头部转动与眨眼，因此疲劳/分心在这段素材上只能验证「不误报」，
 **无法验证「能检出」**。
 
-### 5.3 单卡并发扩容曲线（实测，A100 80GB）
+### 6.3 单卡并发扩容曲线（实测，A100 80GB）
 
 **纯模型吞吐上限**（摘掉所有流水线，只反复调 `infer_batch`，输入 960×540）：
 
@@ -292,7 +335,7 @@ ultralytics 的 letterbox 预处理、NMS、结果对象构造，加上后处理
 和**把前后处理搬到 C++ 侧**（TensorRT / Triton）。后者**未实测**，
 按经验通常还有 2–3 倍空间，但不能拿经验值当实测数字用。
 
-### 5.4 端到端链路验证（不是「服务起来了」，是断言看板真的收到）
+### 6.4 端到端链路验证（不是「服务起来了」，是断言看板真的收到）
 
 ```
 [1] 服务已启动
@@ -313,7 +356,7 @@ ultralytics 的 letterbox 预处理、NMS、结果对象构造，加上后处理
 
 ---
 
-## 6. 已知限制
+## 7. 已知限制
 
 **必须先说的三条**
 
@@ -350,7 +393,7 @@ ultralytics 的 letterbox 预处理、NMS、结果对象构造，加上后处理
 
 ---
 
-## 7. 代码结构
+## 8. 代码结构
 
 ```
 mode-b-server/
@@ -375,7 +418,7 @@ mode-b-server/
 
 ---
 
-## 8. 环境变量
+## 9. 环境变量
 
 全部可选，默认值见 `modeb/config.py`。
 

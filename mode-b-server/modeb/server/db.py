@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS events (
     vehicle_id    TEXT NOT NULL,
     violation     TEXT NOT NULL,
     severity      TEXT NOT NULL,
+    decision      TEXT NOT NULL DEFAULT 'confirmed',   -- confirmed | undecidable
     role          TEXT,
     seat          TEXT,
     confidence    REAL,
@@ -40,6 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_events_ts        ON events(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_vehicle   ON events(vehicle_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_violation ON events(violation, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_review    ON events(review_status, ts DESC);
+-- 「判不了」的记录必须能被单独查出来：它既不能混进违规统计，也绝不能被当成合规而丢掉
+CREATE INDEX IF NOT EXISTS idx_events_decision  ON events(decision, ts DESC);
 
 CREATE TABLE IF NOT EXISTS vehicles (
     vehicle_id   TEXT PRIMARY KEY,
@@ -89,8 +92,17 @@ class EventStore:
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.execute("PRAGMA journal_mode=WAL")   # 写入与看板查询并发
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """就地升级老库 —— 演示环境里 runs/modeb.db 常常是上一版留下的。"""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(events)")}
+        if "decision" not in cols:
+            self._conn.execute(
+                "ALTER TABLE events ADD COLUMN decision TEXT NOT NULL DEFAULT 'confirmed'")
+            self._conn.commit()
 
     def close(self) -> None:
         with self._lock:
@@ -160,12 +172,13 @@ class EventStore:
         with self._lock:
             self._conn.execute(
                 """INSERT OR REPLACE INTO events(event_id, ts, vehicle_id, violation, severity,
-                       role, seat, confidence, duration_s, message, mode, raw_json,
+                       decision, role, seat, confidence, duration_s, message, mode, raw_json,
                        evidence_path, review_status)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,
                           COALESCE((SELECT review_status FROM events WHERE event_id=?), 'pending'))""",
                 (ev_id, float(ev.get("ts", time.time())), ev.get("vehicle_id", ""),
-                 ev.get("violation", ""), ev.get("severity", "warn"), subject.get("role"),
+                 ev.get("violation", ""), ev.get("severity", "warn"),
+                 ev.get("decision", "confirmed"), subject.get("role"),
                  subject.get("seat"), float(ev.get("confidence") or 0.0),
                  float(ev.get("duration_s") or 0.0), ev.get("message", ""), ev.get("mode", ""),
                  json.dumps(ev, ensure_ascii=False), str(path) if path else None, ev_id))
@@ -193,12 +206,14 @@ class EventStore:
 
     def query_events(self, *, vehicle_id: str | None = None, violation: str | None = None,
                      severity: str | None = None, review_status: str | None = None,
+                     decision: str | None = None,
                      since: float | None = None, until: float | None = None,
                      limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         sql = ["SELECT * FROM events WHERE 1=1"]
         args: list[Any] = []
         for col, val in (("vehicle_id", vehicle_id), ("violation", violation),
-                         ("severity", severity), ("review_status", review_status)):
+                         ("severity", severity), ("review_status", review_status),
+                         ("decision", decision)):
             if val:
                 sql.append(f"AND {col}=?")
                 args.append(val)
@@ -231,19 +246,69 @@ class EventStore:
 
     # -- 汇总统计（模式B 的核心价值） ---------------------------------------
     def overview(self, window_s: float = 86400.0) -> dict[str, Any]:
+        """总览。`events` / `critical` **只统计确认违规**，「判不了」单列为 `undecidable`。
+
+        把两者混在一起会同时犯两个错：误报率虚高，以及更糟的——
+        漏检被当成合规。这两个数字必须分开看。
+        """
         since = time.time() - window_s
+        C = "decision='confirmed'"
         with self._lock:
-            total = self._conn.execute("SELECT COUNT(*) c FROM events WHERE ts>=?", (since,)).fetchone()["c"]
+            total = self._conn.execute(
+                f"SELECT COUNT(*) c FROM events WHERE ts>=? AND {C}", (since,)).fetchone()["c"]
             crit = self._conn.execute(
-                "SELECT COUNT(*) c FROM events WHERE ts>=? AND severity='critical'", (since,)).fetchone()["c"]
+                f"SELECT COUNT(*) c FROM events WHERE ts>=? AND {C} AND severity='critical'",
+                (since,)).fetchone()["c"]
+            undecidable = self._conn.execute(
+                "SELECT COUNT(*) c FROM events WHERE ts>=? AND decision='undecidable'",
+                (since,)).fetchone()["c"]
+            und_vehicles = self._conn.execute(
+                "SELECT COUNT(DISTINCT vehicle_id) c FROM events WHERE ts>=? AND decision='undecidable'",
+                (since,)).fetchone()["c"]
             pending = self._conn.execute(
-                "SELECT COUNT(*) c FROM events WHERE ts>=? AND review_status='pending'", (since,)).fetchone()["c"]
+                f"SELECT COUNT(*) c FROM events WHERE ts>=? AND {C} AND review_status='pending'",
+                (since,)).fetchone()["c"]
             vehicles = self._conn.execute("SELECT COUNT(*) c FROM vehicles").fetchone()["c"]
             involved = self._conn.execute(
-                "SELECT COUNT(DISTINCT vehicle_id) c FROM events WHERE ts>=?", (since,)).fetchone()["c"]
+                f"SELECT COUNT(DISTINCT vehicle_id) c FROM events WHERE ts>=? AND {C}",
+                (since,)).fetchone()["c"]
         online = sum(1 for v in self.list_vehicles() if v["online"])
         return {"window_s": window_s, "events": total, "critical": crit, "pending_review": pending,
+                "undecidable": undecidable, "vehicles_unchecked": und_vehicles,
                 "vehicles": vehicles, "vehicles_online": online, "vehicles_with_events": involved}
+
+    def data_quality(self, window_s: float = 86400.0, limit: int = 20) -> dict[str, Any]:
+        """检查完成度 —— 「这车没问题」和「这车没看清」必须能分开回答。
+
+        这是车队管理系统的基本要求：发车前放行一台「没看清」的车，
+        和放行一台「确认合规」的车，责任完全不同。
+        """
+        since = time.time() - window_s
+        with self._lock:
+            by_v = self._conn.execute(
+                """SELECT violation, COUNT(*) n FROM events
+                   WHERE ts>=? AND decision='undecidable'
+                   GROUP BY violation ORDER BY n DESC""", (since,)).fetchall()
+            by_veh = self._conn.execute(
+                """SELECT e.vehicle_id, v.plate, v.driver_name, COUNT(*) n
+                   FROM events e LEFT JOIN vehicles v ON v.vehicle_id=e.vehicle_id
+                   WHERE e.ts>=? AND e.decision='undecidable'
+                   GROUP BY e.vehicle_id ORDER BY n DESC LIMIT ?""", (since, limit)).fetchall()
+            reasons = self._conn.execute(
+                """SELECT raw_json FROM events WHERE ts>=? AND decision='undecidable'
+                   ORDER BY ts DESC LIMIT 300""", (since,)).fetchall()
+        reason_count: dict[str, int] = {}
+        for r in reasons:
+            try:
+                why = (json.loads(r["raw_json"]).get("raw_signals") or {}).get("undecidable_reason")
+            except (ValueError, TypeError):
+                why = None
+            if why:
+                reason_count[why] = reason_count.get(why, 0) + 1
+        return {"by_violation": [dict(r) for r in by_v],
+                "by_vehicle": [dict(r) for r in by_veh],
+                "by_reason": sorted(({"reason": k, "n": v} for k, v in reason_count.items()),
+                                    key=lambda x: x["n"], reverse=True)}
 
     def violation_ranking(self, window_s: float = 86400.0, limit: int = 20) -> list[dict[str, Any]]:
         since = time.time() - window_s
@@ -251,7 +316,8 @@ class EventStore:
             rows = self._conn.execute(
                 """SELECT violation, COUNT(*) n,
                           SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END) n_critical
-                   FROM events WHERE ts>=? GROUP BY violation ORDER BY n DESC LIMIT ?""",
+                   FROM events WHERE ts>=? AND decision='confirmed'
+                   GROUP BY violation ORDER BY n DESC LIMIT ?""",
                 (since, limit)).fetchall()
         return [dict(r) for r in rows]
 
@@ -266,7 +332,8 @@ class EventStore:
             rows = self._conn.execute(
                 """SELECT e.vehicle_id, e.violation, COUNT(*) n, v.plate, v.driver_name, v.driver_id
                    FROM events e LEFT JOIN vehicles v ON v.vehicle_id = e.vehicle_id
-                   WHERE e.ts>=? GROUP BY e.vehicle_id, e.violation""", (since,)).fetchall()
+                   WHERE e.ts>=? AND e.decision='confirmed'
+                   GROUP BY e.vehicle_id, e.violation""", (since,)).fetchall()
         agg: dict[str, dict[str, Any]] = {}
         for r in rows:
             d = agg.setdefault(r["vehicle_id"], {
@@ -290,7 +357,8 @@ class EventStore:
                           COALESCE(v.driver_name, e.vehicle_id) dname,
                           e.violation, COUNT(*) n, COUNT(DISTINCT e.vehicle_id) nveh
                    FROM events e LEFT JOIN vehicles v ON v.vehicle_id = e.vehicle_id
-                   WHERE e.ts>=? GROUP BY did, e.violation""", (since,)).fetchall()
+                   WHERE e.ts>=? AND e.decision='confirmed'
+                   GROUP BY did, e.violation""", (since,)).fetchall()
         agg: dict[str, dict[str, Any]] = {}
         for r in rows:
             d = agg.setdefault(r["did"], {"driver_id": r["did"], "driver_name": r["dname"],
@@ -314,7 +382,8 @@ class EventStore:
         step = window_s / buckets
         with self._lock:
             rows = self._conn.execute(
-                "SELECT ts, severity FROM events WHERE ts>=?", (since,)).fetchall()
+                "SELECT ts, severity FROM events WHERE ts>=? AND decision='confirmed'",
+                (since,)).fetchall()
         out = [{"t": round(since + i * step), "total": 0, "critical": 0} for i in range(buckets)]
         for r in rows:
             i = min(buckets - 1, max(0, int((r["ts"] - since) / step)))
@@ -361,6 +430,7 @@ def strip_backend_fields(row: dict[str, Any]) -> dict[str, Any]:
 def _row_to_event(row: sqlite3.Row) -> dict[str, Any]:
     d = json.loads(row["raw_json"])
     d["event_id"] = row["event_id"]
+    d.setdefault("decision", row["decision"])
     d["review_status"] = row["review_status"]
     d["review_note"] = row["review_note"]
     d["reviewed_at"] = row["reviewed_at"]

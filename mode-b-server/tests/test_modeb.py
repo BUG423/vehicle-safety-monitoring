@@ -24,8 +24,9 @@ for _p in (str(_HERE), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from common import (AlertDispatcher, DetectionMode, Evidence, InCabinChannel,  # noqa: E402
-                    SafetyEvent, Subject, SubjectRole, ViolationType)
+from common import (AlertDispatcher, Decision, DetectionMode, Evidence,  # noqa: E402
+                    InCabinChannel, SafetyEvent, Subject, SubjectRole,
+                    VehicleContext, ViolationType)
 
 from modeb.config import Config  # noqa: E402
 from modeb.engine.pipeline import VehiclePipeline  # noqa: E402
@@ -382,3 +383,132 @@ def test_脚本mock不读画面也能产出人体():
     r = det.infer(np.zeros((480, 640, 3), np.uint8))
     assert len(r.persons) == 2
     assert r.backend == "mock"
+
+
+# ---------------------------------------------------------------- 可判定性
+def test_遮挡时其余检查是判不了而不是合规():
+    """安全检查里最危险的失败模式：把「没看清」当成「检查通过」。"""
+    cfg = Config()
+    det = CartoonCockpitDetector()
+    events: list = []
+    prompts: list = []
+    from modeb.sources.base import Frame
+    pipe = VehiclePipeline("BLK", cfg,
+                           dispatcher=AlertDispatcher(channels=[InCabinChannel(sink=prompts.append),
+                                                                _RecordingBackend([])]),
+                           on_event=events.append, model_version="cartoon")
+    black = np.zeros((480, 640, 3), np.uint8)          # 摄像头被贴住
+    for i in range(15 * 12):
+        res = det.infer(black)
+        res.ts = i / 15.0
+        pipe.process(Frame(vehicle_id="BLK", image=black, seq=i), res)
+
+    confirmed = [e for e in events if e.decision is Decision.CONFIRMED]
+    undecidable = [e for e in events if e.decision is Decision.UNDECIDABLE]
+
+    assert any(e.violation is ViolationType.SYSTEM_CAMERA_BLOCKED for e in confirmed), \
+        "遮挡本身是确认违规"
+    assert {ViolationType.DRIVER_NO_SEATBELT, ViolationType.DRIVER_FATIGUE,
+            ViolationType.PASSENGER_NO_SEATBELT} <= {e.violation for e in undecidable}, \
+        "遮挡时安全带/疲劳必须是「判不了」，不能是「没违规」"
+    # 判不了的记录不打扰驾驶员：他已经收到遮挡告警，其余的对他没有可执行动作
+    assert len(prompts) == len([e for e in confirmed if e.severity.rank >= 1])
+    for e in undecidable:
+        assert e.severity.value == "info"
+        assert e.evidence.evidence_text and "未能完成" in e.evidence.evidence_text
+        assert e.raw_signals.get("undecidable_reason")
+    # 看板要能拿到「这台车哪几项没检查完」
+    assert len(pipe.unchecked) >= 3
+
+
+def test_判不了不会污染违规判定的滑窗():
+    """喂 hit=False 会把「看不见」当成合规证据，甚至让已进入违规态的项目错误恢复。"""
+    cfg = Config()
+    det = CartoonCockpitDetector()
+    from modeb.sources.base import Frame
+    events: list = []
+    pipe = VehiclePipeline("MIX", cfg, dispatcher=None, on_event=events.append)
+    black = np.zeros((480, 640, 3), np.uint8)
+    for i in range(15 * 8):
+        res = det.infer(black)
+        res.ts = i / 15.0
+        pipe.process(Frame(vehicle_id="MIX", image=black, seq=i), res)
+    # 主确认器里安全带一项应当**完全没有样本**（不是「样本全是 False」）
+    state = pipe.confirmer._states.get((ViolationType.DRIVER_NO_SEATBELT, "driver"))  # noqa: SLF001
+    assert state is None or len(state.samples) == 0, "判不了的帧不应进入违规判定的滑窗"
+
+
+def test_统计口径把判不了单独拿出来(tmp_path):
+    store = EventStore(tmp_path / "t.db")
+    store.register_vehicle("京A9", driver_name="丙", driver_id="D9")
+    store.insert_event(SafetyEvent(violation=ViolationType.DRIVER_FATIGUE, vehicle_id="京A9",
+                                   mode=DetectionMode.SERVER).to_dict())
+    for _ in range(4):
+        store.insert_event(SafetyEvent(
+            violation=ViolationType.DRIVER_NO_SEATBELT, vehicle_id="京A9",
+            mode=DetectionMode.SERVER, decision=Decision.UNDECIDABLE,
+            raw_signals={"undecidable_reason": "摄像头被遮挡"}).to_dict())
+
+    ov = store.overview()
+    assert ov["events"] == 1, "违规统计不能把「判不了」算进去，否则误报率虚高"
+    assert ov["undecidable"] == 4 and ov["vehicles_unchecked"] == 1
+    # 评分只看确认违规：4 条未完成检查不该扣分
+    assert store.vehicle_ranking()[0]["penalty"] == 12
+    assert [v["violation"] for v in store.violation_ranking()] == ["driver.fatigue"]
+    q = store.data_quality()
+    assert q["by_violation"][0]["n"] == 4
+    assert q["by_reason"][0]["reason"] == "摄像头被遮挡"
+    assert len(store.query_events(decision="undecidable")) == 4
+    assert len(store.query_events(decision="confirmed")) == 1
+    store.close()
+
+
+def test_超员用行驶证核定载客数():
+    """核定载客数来自行驶证，不是视觉推断 —— 契约层 1.2 的 seat_capacity。"""
+    from modeb.engine.rules import ViolationRuleEngine
+    from modeb.perception.base import PerceptionResult
+    eng = ViolationRuleEngine(Config().rules)
+    res = PerceptionResult(ts=0.0, width=640, height=480, backend="t")
+    res.persons = [PersonObs(BBox(i * 60, 100, i * 60 + 50, 400), 0.9) for i in range(4)]
+    ctx = VehicleContext(vehicle_id="V", seat_capacity=2)
+    hits = {h.violation: h for h in eng._occupancy(res, ctx)}          # noqa: SLF001
+    over = hits[ViolationType.PASSENGER_OVERLOAD]
+    assert over.hit and over.signals["seat_capacity"] == 2
+    assert over.signals["capacity_source"] == "行驶证"
+
+    hits2 = {h.violation: h for h in eng._occupancy(res, None)}        # noqa: SLF001
+    assert not hits2[ViolationType.PASSENGER_OVERLOAD].hit             # 默认核定 5 人
+    assert hits2[ViolationType.PASSENGER_OVERLOAD].signals["capacity_source"] == "配置默认值"
+
+
+def test_未接车速信号时超速是判不了():
+    from modeb.engine.rules import ViolationRuleEngine
+    eng = ViolationRuleEngine(Config().rules)
+    h = eng._vehicle_level(VehicleContext(vehicle_id="V"))[0]          # noqa: SLF001
+    assert not h.decidable and h.decision is Decision.UNDECIDABLE
+    h2 = eng._vehicle_level(VehicleContext(vehicle_id="V", speed_kmh=80,   # noqa: SLF001
+                                           speed_limit_kmh=60))[0]
+    assert h2.decidable and h2.hit and "80" in h2.evidence_text
+
+
+def test_事件带文字依据便于隐私友好的复核(tmp_path):
+    """管理者读一行字就能复核，不必调阅车内录像 —— 契约层 1.2 的 evidence_text。"""
+    if not BENCH_CLIP.exists():
+        pytest.skip("缺少 bench 素材")
+    import cv2
+    from modeb.sources.base import Frame
+    cfg = Config()
+    det = CartoonCockpitDetector()
+    got: list = []
+    pipe = VehiclePipeline("TXT", cfg, dispatcher=None, on_event=got.append)
+    cap = cv2.VideoCapture(str(BENCH_CLIP))
+    for i in range(15 * 12):
+        ok, img = cap.read()
+        if not ok:
+            break
+        res = det.infer(img)
+        res.ts = i / 15.0
+        pipe.process(Frame(vehicle_id="TXT", image=img, seq=i), res)
+    cap.release()
+    assert got
+    assert any(e.evidence.evidence_text for e in got), "确认违规也要给出文字依据"

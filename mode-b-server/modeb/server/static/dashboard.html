@@ -8,7 +8,7 @@
 :root{
   --bg:#f5f5f7; --panel:rgba(255,255,255,.72); --panel-2:rgba(255,255,255,.55);
   --line:rgba(0,0,0,.08); --text:#1d1d1f; --muted:#6e6e73;
-  --crit:#ff3b30; --warn:#ff9f0a; --info:#0a84ff; --ok:#30d158;
+  --crit:#ff3b30; --warn:#ff9f0a; --info:#0a84ff; --ok:#30d158; --violet:#5e5ce6;
   --radius:18px;
 }
 @media (prefers-color-scheme:dark){
@@ -63,6 +63,7 @@ h2 .n{color:var(--muted);font-weight:400;font-size:12px}
 .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;min-height:19px}
 .tag{font-size:10.5px;padding:2px 7px;border-radius:999px;background:rgba(255,59,48,.14);color:var(--crit)}
 .tag.warn{background:rgba(255,159,10,.16);color:var(--warn)}
+.tag.unchk{background:rgba(94,92,230,.16);color:var(--violet)}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:500;font-size:11.5px}
@@ -104,6 +105,7 @@ svg text{font-size:10px;fill:var(--muted)}
     <div class="glass kpi"><div class="v" id="k-events">—</div><div class="k">24 小时事件</div></div>
     <div class="glass kpi"><div class="v" id="k-crit" style="color:var(--crit)">—</div><div class="k">其中严重告警</div></div>
     <div class="glass kpi"><div class="v" id="k-pending">—</div><div class="k">待复核</div></div>
+    <div class="glass kpi"><div class="v" id="k-unchk" style="color:var(--violet)">—</div><div class="k">未完成检查</div></div>
     <div class="glass kpi"><div class="v" id="k-lat">—</div><div class="k">端到端延迟 P95</div></div>
   </div>
 
@@ -112,6 +114,17 @@ svg text{font-size:10px;fill:var(--muted)}
       <section class="glass">
         <h2>实时告警流 <span class="n" id="n-stream">0 条</span></h2>
         <div class="stream" id="stream"><div class="empty">等待告警…</div></div>
+      </section>
+      <section class="glass">
+        <h2>未完成的检查 <span class="n" id="n-unchk">0 条</span></h2>
+        <div class="stream" id="unchk-stream" style="max-height:200px">
+          <div class="empty">全部检查项均已完成</div></div>
+        <p class="note" style="margin-top:10px">
+          「判不了」和「没违规」是两回事。摄像头被挡住、司机侧身、夜间失效时，
+          安全带检查根本没执行完 —— 如果后台只是「没收到事件」，会被读成检查通过而放行，
+          这是最危险的失败模式。因此这类记录照常上报后台、单独统计，但**不打扰驾驶员**
+          （对他没有可执行动作）。它们不计入违规统计，也不影响驾驶员评分。
+        </p>
       </section>
       <section class="glass">
         <h2>车队状态 <span class="n" id="n-veh">0 台</span></h2>
@@ -127,6 +140,10 @@ svg text{font-size:10px;fill:var(--muted)}
       <section class="glass">
         <h2>事件时段趋势 <span class="n">近 24 小时</span></h2>
         <div id="chart-timeline"><div class="empty">暂无数据</div></div>
+      </section>
+      <section class="glass">
+        <h2>检查未完成归因 <span class="n">近 24 小时</span></h2>
+        <div id="chart-quality"><div class="empty">暂无未完成的检查</div></div>
       </section>
       <section class="glass">
         <h2>驾驶员安全评分 <span class="n">近 7 天 · 分低者优先</span></h2>
@@ -186,7 +203,9 @@ function renderSystem(sys){
 
 function pushEvent(ev, isNew){
   if (byId[ev.event_id]) return;
-  byId[ev.event_id] = ev; events.unshift(ev);
+  byId[ev.event_id] = ev;
+  if ((ev.decision || 'confirmed') === 'undecidable'){ pushUnchecked(ev, isNew); return; }
+  events.unshift(ev);
   if (events.length > 300) events.length = 300;
   const box = $('#stream');
   if (box.querySelector('.empty')) box.innerHTML = '';
@@ -211,18 +230,55 @@ async function j(u){ const r = await fetch(u); return r.json(); }
 
 async function refresh(){
   try{
-    const [ov, vs, vi, tl, dr, sys] = await Promise.all([
+    const [ov, vs, vi, tl, dr, sys, dq] = await Promise.all([
       j('/api/v1/stats/overview'), j('/api/v1/vehicles'), j('/api/v1/stats/violations'),
-      j('/api/v1/stats/timeline'), j('/api/v1/stats/drivers'), j('/api/v1/system')]);
+      j('/api/v1/stats/timeline'), j('/api/v1/stats/drivers'), j('/api/v1/system'),
+      j('/api/v1/stats/data_quality')]);
     $('#k-online').textContent = `${ov.vehicles_online} / ${ov.vehicles}`;
     $('#k-events').textContent = ov.events;
     $('#k-crit').textContent = ov.critical;
     $('#k-pending').textContent = ov.pending_review;
+    $('#k-unchk').textContent = ov.undecidable ?? 0;
     const p95 = Object.values(sys.pipelines||{}).map(p=>p.e2e_ms_p95).filter(x=>x>0);
     $('#k-lat').textContent = p95.length ? Math.round(Math.max(...p95)) + ' ms' : '—';
     renderSystem(sys); renderVehicles(vs.vehicles); barChart(vi.items); areaChart(tl.items);
-    renderDrivers(dr.items);
+    renderDrivers(dr.items); qualityChart(dq);
   }catch(e){ /* 服务重启时忽略 */ }
+}
+
+let unchecked = [];
+function pushUnchecked(ev, isNew){
+  unchecked.unshift(ev);
+  if (unchecked.length > 200) unchecked.length = 200;
+  const box = $('#unchk-stream');
+  if (box.querySelector('.empty')) box.innerHTML = '';
+  const why = (ev.raw_signals && ev.raw_signals.undecidable_reason) || '原因未记录';
+  const el = document.createElement('div');
+  el.className = 'ev' + (isNew ? ' new' : '');
+  el.onclick = () => openModal(ev.event_id);
+  el.innerHTML = `<div class="bar" style="background:var(--violet)"></div>
+    <div style="flex:1;min-width:0">
+      <div class="t">未完成：${esc(lab(ev.violation))}</div>
+      <div class="m">${esc(ev.vehicle_id)} · ${fmt(ev.ts)} · ${esc(why)}</div>
+    </div>`;
+  box.insertBefore(el, box.firstChild);
+  while (box.children.length > 60) box.removeChild(box.lastChild);
+  $('#n-unchk').textContent = unchecked.length + ' 条';
+}
+
+function qualityChart(q){
+  const items = (q && q.by_reason) || [];
+  const box = $('#chart-quality');
+  if (!items.length){ box.innerHTML = '<div class="empty">暂无未完成的检查</div>'; return; }
+  const top = items.slice(0, 5), max = Math.max(...top.map(i => i.n), 1);
+  const rowH = 30, W = 340, H = top.length * rowH + 6;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">` +
+    top.map((it, i) => {
+      const w = Math.max(2, it.n / max * (W - 60)), y = i * rowH + 4;
+      return `<text x="0" y="${y + 11}">${esc(it.reason).slice(0, 22)}</text>
+        <rect x="0" y="${y + 15}" width="${w}" height="8" rx="4" fill="var(--violet)" opacity=".8"></rect>
+        <text x="${w + 5}" y="${y + 23}">${it.n}</text>`;
+    }).join('') + '</svg>';
 }
 
 function renderVehicles(list){
@@ -231,7 +287,9 @@ function renderVehicles(list){
   if (!list.length){ box.innerHTML = '<div class="empty">暂无接入车辆</div>'; return; }
   box.innerHTML = list.map(v => {
     const tags = (v.active_violations||[]).map(a =>
-      `<span class="tag ${a.severity==='critical'?'':'warn'}">${esc(a.label)} ${a.duration_s}s</span>`).join('');
+      `<span class="tag ${a.severity==='critical'?'':'warn'}">${esc(a.label)} ${a.duration_s}s</span>`).join('')
+      + (v.unchecked||[]).map(u =>
+      `<span class="tag unchk" title="${esc(u.reason||'')}">未完成 ${esc(u.label)}</span>`).join('');
     const st = v.pipeline || {};
     return `<div class="vcard">
       <div class="p"><span>${esc(v.plate||v.vehicle_id)}</span>
@@ -291,9 +349,12 @@ function areaChart(items){
 async function openModal(id){
   const ev = byId[id] || await j('/api/v1/events/'+id);
   const img = ev.evidence && ev.evidence.frame_uri ? `<img src="${esc(ev.evidence.frame_uri)}" alt="证据帧">` : '';
+  const und = (ev.decision || 'confirmed') === 'undecidable';
+  const etext = (ev.evidence && ev.evidence.evidence_text) || '';
   $('#sheet').innerHTML = `
-    <h2 style="font-size:17px">${esc(lab(ev.violation))}
-      <span class="n">${esc(ev.severity)}</span></h2>
+    <h2 style="font-size:17px">${und ? '未完成检查：' : ''}${esc(lab(ev.violation))}
+      <span class="n">${und ? 'undecidable' : esc(ev.severity)}</span></h2>
+    ${etext ? `<div class="sub" style="margin-bottom:6px">文字依据：${esc(etext)}</div>` : ''}
     <div class="sub">${esc(ev.vehicle_id)} · ${fmt(ev.ts)} · 持续 ${(ev.duration_s||0).toFixed(1)}s
       · 置信 ${ev.confidence} · 座位 ${esc((ev.subject||{}).seat||'-')}</div>
     ${img}
@@ -320,7 +381,7 @@ async function review(id, status){
 
 /* ---------- 启动 ---------- */
 (async function(){
-  const hist = await j('/api/v1/events?limit=60');
+  const hist = await j('/api/v1/events?limit=80');
   hist.events.slice().reverse().forEach(e => pushEvent(e, false));
   connect(); refresh(); setInterval(refresh, 3000);
 })();

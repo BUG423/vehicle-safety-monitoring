@@ -37,8 +37,8 @@ if str(_ROOT) not in sys.path:
 from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
-from common import (AlertDispatcher, BackendChannel, CabinPrompt, InCabinChannel,  # noqa: E402
-                    SafetyEvent, Severity)
+from common import (AlertDispatcher, BackendChannel, CabinPrompt, Decision,  # noqa: E402
+                    InCabinChannel, SafetyEvent, Severity)
 
 from modeb.config import Config  # noqa: E402
 from modeb.engine.pipeline import VehiclePipeline  # noqa: E402
@@ -280,20 +280,21 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         srv.store.touch_vehicle(ev.vehicle_id)
         payload = srv.store.get_event(ev.event_id) or d
         srv.hub.broadcast("dashboard", {"type": "event", "event": payload})
-        prompt = InCabinChannel().build_prompt(ev)
-        if ev.severity.rank >= Severity.WARN.rank:
-            srv._push_cabin(ev.vehicle_id, prompt)  # noqa: SLF001
+        # 「判不了」照常入库上报后台，但不打扰驾驶员——对他没有可执行动作
+        if ev.decision is Decision.CONFIRMED and ev.severity.rank >= Severity.WARN.rank:
+            srv._push_cabin(ev.vehicle_id, InCabinChannel().build_prompt(ev))  # noqa: SLF001
         return {"ok": True, "event_id": ev.event_id}
 
     @app.get("/api/v1/events")
     async def list_events(vehicle_id: str | None = None, violation: str | None = None,
                           severity: str | None = None, review_status: str | None = None,
+                          decision: str | None = Query(None, description="confirmed | undecidable"),
                           since_s: float | None = Query(None, description="最近 N 秒内"),
                           limit: int = 100, offset: int = 0) -> dict:
         since = time.time() - since_s if since_s else None
         rows = srv.store.query_events(vehicle_id=vehicle_id, violation=violation,
                                       severity=severity, review_status=review_status,
-                                      since=since, limit=limit, offset=offset)
+                                      decision=decision, since=since, limit=limit, offset=offset)
         return {"count": len(rows), "events": rows}
 
     @app.get("/api/v1/events/{event_id}")
@@ -328,9 +329,11 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     async def vehicles() -> dict:
         rows = srv.store.list_vehicles(srv.cfg.server.heartbeat_timeout_s)
         live = {vid: p.active for vid, p in srv.scheduler._pipelines.items()}  # noqa: SLF001
+        unchk = {vid: p.unchecked for vid, p in srv.scheduler._pipelines.items()}  # noqa: SLF001
         stats = {vid: p.stats.to_dict() for vid, p in srv.scheduler._pipelines.items()}  # noqa: SLF001
         for r in rows:
             r["active_violations"] = list(live.get(r["vehicle_id"], {}).values())
+            r["unchecked"] = list(unchk.get(r["vehicle_id"], {}).values())
             r["pipeline"] = stats.get(r["vehicle_id"])
         return {"count": len(rows), "vehicles": rows}
 
@@ -349,6 +352,11 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/v1/stats/drivers")
     async def dstats(window_s: float = 604800.0, limit: int = 50) -> dict:
         return {"items": srv.store.driver_scores(window_s, limit)}
+
+    @app.get("/api/v1/stats/data_quality")
+    async def data_quality(window_s: float = 86400.0, limit: int = 20) -> dict:
+        """检查完成度 —— 「这车没问题」与「这车没看清」必须分开回答。"""
+        return srv.store.data_quality(window_s, limit)
 
     @app.get("/api/v1/stats/timeline")
     async def tl(window_s: float = 86400.0, buckets: int = 24) -> dict:
