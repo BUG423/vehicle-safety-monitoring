@@ -1,0 +1,7 @@
+# 模式C 车载嵌入式端依赖 —— 刻意压到最小，全部有 aarch64 轮子，可在 RK3588/Jetson 上直接装
+numpy>=1.24
+opencv-python>=4.8          # 实车用 opencv-python-headless，省掉 GUI 依赖
+onnxruntime>=1.16           # 实车换成 onnxruntime + RKNN/TensorRT 后端，见 DESIGN.md
+psutil>=5.9                 # 只用于性能实测，运行时非必需
+
+# 事件模型、确认状态机、告警通道来自仓库根目录的 common/，纯标准库，无额外依赖。
