@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 import sys
@@ -76,7 +77,8 @@ class ModeBServer:
                            spool_dir=str(Path(self.cfg.server.db_path).parent / ".spool")),
         ])
         return VehiclePipeline(vehicle_id, self.cfg, dispatcher=dispatcher,
-                               face_module=self.face_module)
+                               face_module=self.face_module,
+                               model_version=_model_version(self.detector, self.face_module))
 
     def _push_cabin(self, vehicle_id: str, prompt: CabinPrompt) -> None:
         """车内提醒 —— 由后台推回车机。模式B 的车内提醒依赖网络，这是它的固有短板。"""
@@ -153,23 +155,31 @@ class ModeBServer:
         self.store.close()
 
 
+def _model_version(detector, face_module) -> str:
+    """模型版本串 —— 写进每条事件的 Evidence，灰度期用于把误报归因到具体版本。"""
+    d = detector.describe()
+    base = f"{d.get('name')}/{d.get('pose_model') or d.get('kind') or '-'}"
+    return base + ("+face478" if face_module else "")
+
+
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or Config()
-    app = FastAPI(title="车辆安全监测 · 模式B 后台服务", version="0.1.0",
-                  description="后台服务器实时监测与车队汇总")
     srv = ModeBServer(cfg)
-    app.state.srv = srv
 
-    @app.on_event("startup")
-    async def _startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         srv.loop = asyncio.get_running_loop()
         srv.scheduler.start()
         print(f"[server] 感知后端: {srv.detector.describe()}")
         print(f"[server] 人脸模块: {'已启用' if srv.face_module else srv.face_error}")
+        try:
+            yield
+        finally:
+            srv.shutdown()
 
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        srv.shutdown()
+    app = FastAPI(title="车辆安全监测 · 模式B 后台服务", version="0.1.0",
+                  description="后台服务器实时监测与车队汇总", lifespan=lifespan)
+    app.state.srv = srv
 
     # ---------------- 车辆接入 ----------------
     @app.post("/api/v1/vehicles/register")

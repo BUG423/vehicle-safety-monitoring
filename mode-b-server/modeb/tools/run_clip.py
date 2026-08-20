@@ -94,8 +94,10 @@ def main() -> int:
             print(f"  [事件] t={t:>6}s  {ev.violation.label_zh:<12} "
                   f"{ev.severity.value:<8} 持续{ev.duration_s:.1f}s 置信{ev.confidence}")
 
+    d = det.describe()
+    version = f"{d.get('name')}/{d.get('pose_model') or d.get('kind')}" + ("+face478" if face else "")
     pipe = VehiclePipeline(args.vehicle, cfg, dispatcher=dispatcher, face_module=face,
-                           on_event=on_event)
+                           on_event=on_event, model_version=version)
 
     idx = 0
     t_start = time.time()

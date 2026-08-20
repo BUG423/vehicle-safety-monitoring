@@ -197,3 +197,68 @@ def _resize_short_side(img: np.ndarray, short_side: int) -> np.ndarray:
     if s >= 1.0:
         return img
     return cv2.resize(img, (int(round(w * s)), int(round(h * s))), interpolation=cv2.INTER_AREA)
+
+
+class ThreadedSource(FrameSource):
+    """给拉流源套一个独立解码线程。
+
+    为什么必须有它：`InferenceScheduler` 的攒批循环是**单线程**的，
+    如果在这个线程里逐个调用 `VideoCapture.read()`，N 路视频的 H.264 解码
+    就全部串行排在 GPU 前面。实测 16 路以上时 GPU 利用率不到 10%，
+    瓶颈完全在 CPU 侧 —— 解码必须挪出攒批循环。
+
+    生产环境更进一步应该用 NVDEC 硬解（`cv2.cudacodec` 或 PyNvCodec），
+    把解码也放到 GPU 上，CPU 只做调度。
+    """
+
+    kind = "threaded"
+
+    def __init__(self, inner: FrameSource, *, maxlen: int = 3) -> None:
+        super().__init__(inner.vehicle_id)
+        self.inner = inner
+        self.kind = f"threaded:{inner.kind}"
+        self._buf: list[Frame] = []
+        self._maxlen = maxlen
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._t = threading.Thread(target=self._run, daemon=True,
+                                   name=f"src-{inner.vehicle_id}")
+        self._t.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set() and self.inner.is_open:
+            try:
+                f = self.inner.read()
+            except Exception:  # noqa: BLE001
+                self.stats["errors"] += 1
+                time.sleep(0.05)
+                continue
+            if f is None:
+                continue
+            with self._lock:
+                self._buf.append(f)
+                while len(self._buf) > self._maxlen:
+                    self._buf.pop(0)
+                    self.stats["dropped"] += 1
+                self.stats["frames"] += 1
+        self._opened = False
+
+    def read(self) -> Frame | None:
+        with self._lock:
+            return self._buf.pop(0) if self._buf else None
+
+    @property
+    def is_open(self) -> bool:
+        return self._opened and (self.inner.is_open or bool(self._buf))
+
+    def close(self) -> None:
+        self._stop.set()
+        super().close()
+        self.inner.close()
+
+    def describe(self) -> dict[str, Any]:
+        d = super().describe()
+        d["inner"] = self.inner.describe()
+        with self._lock:
+            d["pending"] = len(self._buf)
+        return d

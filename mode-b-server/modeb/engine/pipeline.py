@@ -73,6 +73,7 @@ class VehiclePipeline:
                  dispatcher: AlertDispatcher | None = None,
                  face_module: Any = None,
                  on_event: Callable[[SafetyEvent], None] | None = None,
+                 model_version: str | None = None,
                  evidence_max_side: int = 320) -> None:
         self.vehicle_id = vehicle_id
         self.cfg = cfg
@@ -84,6 +85,8 @@ class VehiclePipeline:
         self.on_event = on_event
         self.evidence_max_side = evidence_max_side
         self.stats = PipelineStats()
+        # 灰度期把误报归因到具体模型版本 —— 契约层 1.1 的 Evidence.model_version
+        self.model_version = model_version or "unknown"
         self.context: VehicleContext | None = None
         self.last_hits: list[RawHit] = []
         self.active: dict[str, dict[str, Any]] = {}   # 当前处于违规态的项，供看板显示实时状态
@@ -105,9 +108,12 @@ class VehiclePipeline:
 
         events: list[SafetyEvent] = []
         now = res.ts
+        # 契约层 1.1 的车速门控：分心/看手机/抽烟在车辆静止时不判定（等红灯看手机不算违规）；
+        # 安全带类**刻意不门控**——甲方要的正是「发车前的静止检查」。
+        speed = ctx.speed_kmh if ctx is not None else None
         for hit in hits:
             c = self.confirmer.update(hit.violation, hit.hit, confidence=hit.confidence,
-                                      key=f"{hit.key}", now=now)
+                                      key=f"{hit.key}", now=now, speed_kmh=speed)
             slot = f"{hit.violation.value}@{hit.key}"
             if c.active:
                 self.active[slot] = {"violation": hit.violation.value, "key": hit.key,
@@ -159,6 +165,7 @@ class VehiclePipeline:
                 frame_b64=self._thumbnail(frame.image, hit.bbox),
                 bbox=hit.bbox,
                 captured_at=frame.ts,
+                model_version=self.model_version,
             ),
             raw_signals=signals,
         )

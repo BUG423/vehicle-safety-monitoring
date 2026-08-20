@@ -341,6 +341,23 @@ def _grade(score: int) -> str:
     return "高风险"
 
 
+# 后台自己加的字段 —— 它们不属于 SafetyEvent 契约，
+# 任何要把查询结果还原成 SafetyEvent 的地方都必须先剥掉
+BACKEND_ONLY_FIELDS = ("review_status", "review_note", "reviewed_at")
+
+
+def strip_backend_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """把 `/api/v1/events` 的返回值还原成纯 SafetyEvent 字典。
+
+    `SafetyEvent.from_dict()` 对未知字段是**报错**而不是忽略，
+    所以多带一个 `review_status` 就会让下游反序列化失败。
+    这条已作为契约层修改建议提给汇总方（见 README「对契约层的修改建议」）。
+    """
+    d = {k: v for k, v in row.items() if k not in BACKEND_ONLY_FIELDS}
+    d.pop("schema_version", None)
+    return d
+
+
 def _row_to_event(row: sqlite3.Row) -> dict[str, Any]:
     d = json.loads(row["raw_json"])
     d["event_id"] = row["event_id"]
