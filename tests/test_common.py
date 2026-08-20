@@ -77,10 +77,33 @@ def test_字符串枚举自动归一():
     assert e.subject.role is SubjectRole.DRIVER  # 由前缀推导
 
 
+def test_显式设置的主体角色不被反序列化覆盖():
+    """回归：`from_dict` 曾因 dict 字面量求值顺序先 pop 后 get，导致 role 永远读到 unknown，
+    再被 __post_init__ 重置为违规类型的默认角色。原测试用例的 role 恰好等于默认值，掩盖了它。"""
+    e = SafetyEvent(violation=ViolationType.DRIVER_NO_SEATBELT, vehicle_id="V1",
+                    mode=DetectionMode.EDGE,
+                    subject=Subject(role=SubjectRole.PASSENGER, seat="rear_left", track_id=7))
+    back = SafetyEvent.from_dict(e.to_dict())
+    assert back.subject.role is SubjectRole.PASSENGER
+    assert back.subject.seat == "rear_left" and back.subject.track_id == 7
+
+
+def test_证据带模型版本便于误报归因():
+    e = SafetyEvent(violation=ViolationType.DRIVER_FATIGUE, vehicle_id="V1", mode=DetectionMode.EDGE,
+                    evidence=Evidence(model_version="yunet-2023mar"))
+    assert SafetyEvent.from_dict(e.to_dict()).evidence.model_version == "yunet-2023mar"
+
+
+def test_座位名在播报中被中文化():
+    e = SafetyEvent(violation=ViolationType.PASSENGER_NO_SEATBELT, vehicle_id="V1",
+                    mode=DetectionMode.SERVER, subject=Subject(seat="rear_left"), duration_s=4.0)
+    assert "后排左" in e.message and "rear_left" not in e.message
+
+
 def test_缺省消息为中文可读描述():
     e = SafetyEvent(violation=ViolationType.PASSENGER_NO_SEATBELT, vehicle_id="V1",
                     mode=DetectionMode.SERVER, subject=Subject(seat="rear_left"), duration_s=4.0)
-    assert "乘客未系安全带" in e.message and "rear_left" in e.message
+    assert "乘客未系安全带" in e.message and "持续 4.0 秒" in e.message
 
 
 def test_丢弃缩略图用于窄带上报():
@@ -164,6 +187,41 @@ def test_多主体独立计数():
     assert len(driver) == 1 and rear == []
 
 
+def test_车速门控_静止时不判分心():
+    """等红灯时看手机不构成违规，静止告警只会制造误报。"""
+    conf = ViolationConfirmer()
+    assert conf.rule_for(ViolationType.DRIVER_PHONE_USE).min_speed_kmh == 5.0
+    alerts, t = 0, 0.0
+    for _ in range(100):
+        t += 0.2
+        if conf.update(ViolationType.DRIVER_PHONE_USE, True, key="d", now=t, speed_kmh=0.0).should_alert:
+            alerts += 1
+    assert alerts == 0
+
+
+def test_车速门控_不影响发车前的安全带检查():
+    """静止未系安全带必须照常告警 —— 发车前检查正是甲方需求里的核心场景。"""
+    conf = ViolationConfirmer()
+    assert conf.rule_for(ViolationType.DRIVER_NO_SEATBELT).min_speed_kmh is None
+    alerts, t = 0, 0.0
+    for _ in range(100):
+        t += 0.2
+        if conf.update(ViolationType.DRIVER_NO_SEATBELT, True, key="d", now=t, speed_kmh=0.0).should_alert:
+            alerts += 1
+    assert alerts >= 1
+
+
+def test_车速未知时不门控():
+    """车速信号缺失（未接 OBD）时不应因此漏报。"""
+    conf = ViolationConfirmer()
+    alerts, t = 0, 0.0
+    for _ in range(100):
+        t += 0.2
+        if conf.update(ViolationType.DRIVER_PHONE_USE, True, key="d", now=t).should_alert:
+            alerts += 1
+    assert alerts >= 1
+
+
 # --------------------------------------------------------------------------
 # 告警通道 —— 需求 (c)
 # --------------------------------------------------------------------------
@@ -224,6 +282,26 @@ def test_断网时事件落盘_恢复后补传(tmp_path):
     ch.close()
     assert len(delivered) == 3, "恢复后应补传全部事件"
     assert list(tmp_path.glob("*.json")) == [], "补传成功后应清理落盘文件"
+
+
+def test_落盘超限时优先丢弃低等级事件(tmp_path):
+    """车载设备长时间断网时，无上限落盘会写满 eMMC，把上报故障升级成系统级故障。"""
+    def always_fail(_event):
+        raise ConnectionError("模拟长时间断网")
+
+    ch = BackendChannel(sender=always_fail, spool_dir=tmp_path,
+                        retry_interval_s=999, max_spool_files=20)
+    for _ in range(20):
+        ch.send(SafetyEvent(violation=ViolationType.DRIVER_ABSENT,       # INFO
+                            vehicle_id="V", mode=DetectionMode.EDGE))
+        ch.send(SafetyEvent(violation=ViolationType.DRIVER_FATIGUE,      # CRITICAL
+                            vehicle_id="V", mode=DetectionMode.EDGE))
+    time.sleep(2.0)
+    ch.close()
+    files = list(tmp_path.glob("*.json"))
+    assert len(files) <= 20, "落盘必须受上限约束"
+    ranks = [int(f.stem.split("_")[1]) for f in files]
+    assert ranks.count(2) > ranks.count(0), "CRITICAL 应优先于 INFO 被保留"
 
 
 def test_告警失败不会中断检测主循环():

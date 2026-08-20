@@ -32,22 +32,28 @@ class ConfirmRule:
     cooldown_s: float = 30.0       # 同类事件重复上报的冷却时间
     escalate_after_s: float | None = 60.0   # 持续超过该时长升级为 CRITICAL
     release_ratio: float = 0.2     # 命中比例低于该值判定为恢复
+    min_speed_kmh: float | None = None
+    """低于该车速时不判定本违规。
+
+    分心、看手机在等红灯时并不成立，静止时告警只会制造误报。
+    但**安全带类违规刻意不设门控** —— 发车前的静止检查恰恰是甲方需求里的核心场景。
+    """
 
 
 # 按违规类型定制：疲劳需要长窗口，未系安全带可较快确认，超速由信号直接判定
 DEFAULT_RULES: dict[ViolationType, ConfirmRule] = {
     ViolationType.DRIVER_FATIGUE: ConfirmRule(window_s=8.0, hit_ratio=0.5, min_duration_s=4.0,
-                                              cooldown_s=60.0, escalate_after_s=30.0),
+                                              cooldown_s=60.0, escalate_after_s=30.0, min_speed_kmh=5.0),
     ViolationType.DRIVER_DISTRACTION: ConfirmRule(window_s=4.0, hit_ratio=0.7, min_duration_s=3.0,
-                                                  cooldown_s=45.0),
+                                                  cooldown_s=45.0, min_speed_kmh=5.0),
     ViolationType.DRIVER_NO_SEATBELT: ConfirmRule(window_s=3.0, hit_ratio=0.7, min_duration_s=2.0,
                                                   cooldown_s=60.0, escalate_after_s=20.0),
     ViolationType.PASSENGER_NO_SEATBELT: ConfirmRule(window_s=3.0, hit_ratio=0.7, min_duration_s=2.0,
                                                      cooldown_s=90.0),
     ViolationType.DRIVER_PHONE_USE: ConfirmRule(window_s=4.0, hit_ratio=0.6, min_duration_s=2.5,
-                                                cooldown_s=45.0),
+                                                cooldown_s=45.0, min_speed_kmh=5.0),
     ViolationType.DRIVER_SMOKING: ConfirmRule(window_s=6.0, hit_ratio=0.5, min_duration_s=4.0,
-                                              cooldown_s=120.0),
+                                              cooldown_s=120.0, min_speed_kmh=5.0),
     ViolationType.VEHICLE_SPEEDING: ConfirmRule(window_s=5.0, hit_ratio=0.8, min_duration_s=3.0,
                                                 cooldown_s=30.0, escalate_after_s=15.0),
 }
@@ -104,10 +110,16 @@ class ViolationConfirmer:
         confidence: float = 1.0,
         key: str = "default",
         now: float | None = None,
+        speed_kmh: float | None = None,
     ) -> Confirmation:
         now = time.time() if now is None else now
         rule = self.rule_for(violation)
         state = self._states.setdefault((violation, key), _TrackState())
+
+        # 车速门控：静止时分心/看手机不成立。车速未知时不门控，避免因缺信号漏报。
+        if hit and rule.min_speed_kmh is not None and speed_kmh is not None \
+                and speed_kmh < rule.min_speed_kmh:
+            hit = False
 
         state.samples.append((now, hit))
         while state.samples and now - state.samples[0][0] > rule.window_s:

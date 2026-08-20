@@ -128,10 +128,12 @@ class BackendChannel(AlertChannel):
         spool_dir: str | os.PathLike[str] | None = None,
         max_queue: int = 1000,
         retry_interval_s: float = 10.0,
+        max_spool_files: int = 500,
     ) -> None:
         self._sender = sender or self._default_sender
         self._spool = Path(spool_dir) if spool_dir else Path(".alert_spool")
         self._spool.mkdir(parents=True, exist_ok=True)
+        self._max_spool = max_spool_files
         self._q: queue.Queue[SafetyEvent] = queue.Queue(maxsize=max_queue)
         self._retry_interval = retry_interval_s
         self._stop = threading.Event()
@@ -152,11 +154,50 @@ class BackendChannel(AlertChannel):
             return False
 
     def _spool_event(self, event: SafetyEvent) -> None:
-        path = self._spool / f"{int(event.ts * 1000)}_{event.event_id[:8]}.json"
+        """落盘待补传事件。文件名内嵌严重等级，便于超限时不读文件即可按优先级淘汰。"""
+        self._evict_if_needed()
+        rank = event.severity.rank
+        path = self._spool / f"{int(event.ts * 1000)}_{rank}_{event.event_id[:8]}.json"
         try:
             path.write_text(event.to_json(), encoding="utf-8")
         except OSError as exc:  # noqa: BLE001
             print(f"[BackendChannel] 落盘失败: {exc}")
+
+    @staticmethod
+    def _spool_priority(path: Path) -> tuple[int, int]:
+        """返回 (严重等级, 时间戳毫秒)。等级越低、时间越早，越先被淘汰。"""
+        parts = path.stem.split("_")
+        try:
+            ts_ms = int(parts[0])
+        except (ValueError, IndexError):
+            ts_ms = 0
+        rank = 0
+        if len(parts) >= 3:
+            try:
+                rank = int(parts[1])
+            except ValueError:
+                rank = 0
+        return rank, ts_ms
+
+    def _evict_if_needed(self) -> None:
+        """限制落盘总量。
+
+        车载设备长时间断网（跨省长途、SIM 欠费）时，无上限的落盘会写满 eMMC，
+        进而让整个系统失效 —— 一个本该只影响上报的问题变成了致命故障。
+        超限时优先丢弃低严重等级的旧事件，CRITICAL 最后才丢。
+        """
+        if self._max_spool <= 0:
+            return
+        files = list(self._spool.glob("*.json"))
+        overflow = len(files) - self._max_spool + 1     # 为即将写入的这条留出位置
+        if overflow <= 0:
+            return
+        for path in sorted(files, key=self._spool_priority)[:overflow]:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        print(f"[BackendChannel] 落盘已达上限 {self._max_spool}，丢弃 {overflow} 条低等级旧事件")
 
     def _run(self) -> None:
         last_retry = 0.0

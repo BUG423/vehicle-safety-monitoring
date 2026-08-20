@@ -20,7 +20,15 @@ try:  # 允许以包方式或独立文件方式引入
 except ImportError:  # pragma: no cover
     from violation_types import DetectionMode, Severity, SubjectRole, ViolationType
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
+
+SEAT_LABELS_ZH: dict[str, str] = {
+    "driver": "主驾",
+    "front_passenger": "副驾",
+    "rear_left": "后排左",
+    "rear_middle": "后排中",
+    "rear_right": "后排右",
+}
 
 
 @dataclass
@@ -42,6 +50,7 @@ class Evidence:
     clip_uri: str | None = None        # 事件前后视频片段
     bbox: list[float] | None = None    # [x1, y1, x2, y2] 归一化坐标
     captured_at: float | None = None   # 证据帧的采集时间戳
+    model_version: str | None = None   # 产出该判定的模型标识，灰度期用于把误报归因到具体版本
 
 
 @dataclass
@@ -78,7 +87,8 @@ class SafetyEvent:
             self.message = self._default_message()
 
     def _default_message(self) -> str:
-        seat = f"（{self.subject.seat}）" if self.subject.seat else ""
+        seat_zh = SEAT_LABELS_ZH.get(self.subject.seat or "", self.subject.seat or "")
+        seat = f"（{seat_zh}）" if seat_zh else ""
         dur = f"，持续 {self.duration_s:.1f} 秒" if self.duration_s >= 1 else ""
         return f"{self.violation.label_zh}{seat}{dur}"
 
@@ -100,11 +110,16 @@ class SafetyEvent:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> SafetyEvent:
         d = dict(d)
-        subject = Subject(**{**d.pop("subject", {}), "role": SubjectRole(d.get("subject", {}).get("role", "unknown"))}) \
-            if isinstance(d.get("subject"), dict) else Subject()
-        evidence = Evidence(**d.pop("evidence", {})) if isinstance(d.get("evidence"), dict) else Evidence()
-        d.pop("subject", None)
-        d.pop("evidence", None)
+        raw_subject = d.pop("subject", None)
+        if isinstance(raw_subject, dict):
+            raw_subject = dict(raw_subject)
+            role = raw_subject.pop("role", "unknown")
+            subject = Subject(role=SubjectRole(role) if isinstance(role, str) else role,
+                              **raw_subject)
+        else:
+            subject = Subject()
+        raw_evidence = d.pop("evidence", None)
+        evidence = Evidence(**raw_evidence) if isinstance(raw_evidence, dict) else Evidence()
         d.pop("schema_version", None)
         return cls(subject=subject, evidence=evidence, **d)
 
