@@ -1,0 +1,5 @@
+# 模型权重与测试素材不入库：体积大，且实车上本来就是 OTA 下发的
+models/*.onnx
+assets/*.mp4
+runtime/
+backend/received_events.jsonl
