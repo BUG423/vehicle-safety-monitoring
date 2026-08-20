@@ -54,7 +54,7 @@ class MockBackend(PerceptionBackend):
         d.yaw_deg = 45.0 if noisy(self._on("driver_yaw", t)) else 3.0
         d.pitch_deg = 2.0
         d.belt_score = 0.05 if noisy(self._on("driver_belt_off", t)) else 0.75
-        d.phone_score = 0.80 if noisy(self._on("driver_phone", t)) else 0.02
+        d.phone_score = 0.85 if noisy(self._on("driver_phone", t)) else 0.0
 
         p = SeatObs(seat=FRONT_PASSENGER, present=True, score=0.9, head_bbox=(200, 40, 285, 150))
         p.eye_open, p.mouth_open, p.yaw_deg, p.pitch_deg = 0.38, 0.2, 0.0, 0.0

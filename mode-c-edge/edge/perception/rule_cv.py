@@ -122,11 +122,16 @@ class RuleCvBackend(PerceptionBackend):
     # ---- 手机：手部 ROI 内的高亮小块（屏幕光）----
     @staticmethod
     def _screen_glow(img: np.ndarray, hand) -> float:
+        """归一化到 0~1 的置信度：手部 ROI 里高亮像素占比达到 4% 即记满分。
+
+        归一化这一步不能省 —— 各后端的原始量纲完全不同（本后端是像素占比，
+        onnx 后端是检测框置信度），不归一化就无法共用同一个阈值。
+        """
         r = _crop(img, hand)
         if r.size == 0:
             return 0.0
         v = cv2.cvtColor(r, cv2.COLOR_BGR2HSV)[:, :, 2]
-        return float((v > 200).mean())
+        return float(min(1.0, (v > 200).mean() / 0.04))
 
     def process(self, frame: np.ndarray, frame_idx: int, ts: float | None = None) -> Perception:
         ts = now_ts(ts)

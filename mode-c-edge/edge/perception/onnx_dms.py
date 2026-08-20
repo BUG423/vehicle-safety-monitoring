@@ -10,10 +10,20 @@ YuNet                227 KB    320x240       专为端侧设计的人脸检测�
 insightface 2d106det 4.8 MB    192x192       106 点关键点，覆盖眼轮廓 → 能算真 EAR；
                                              只跑在人脸框内，与画面分辨率解耦
 NanoDet-Plus-m       3.6 MB    416x416       COCO 80 类，含 cell phone；ONNX 可直转 RKNN。
-                     (INT8 1MB)              最重的一档，因此**降频调度**不是每帧都跑
+                                             最重的一档，因此**降频调度**不是每帧都跑
 ===================  ========  ============  ==========================================
 
-三个模型合计 8.6 MB（INT8 约 5.9 MB），常驻内存实测见 README 的性能表。
+两条实测得出的运行时选择（数字见 README 性能表，均为本机真跑）：
+
+* **NanoDet 用 onnxruntime 而不是 OpenCV DNN**：同一个 ONNX，单线程 27.1 ms vs 112.4 ms，
+  差 4.2 倍。OpenCV DNN 的通用 CPU 后端对这类模型没有优化到位。
+* **CPU 上不要用 INT8 权重**：INT8 版单线程 78.0 ms，比 FP32 的 27.1 ms 还慢 2.9 倍。
+  ONNX 的 QDQ 量化图在 CPU 上要反复反量化，收益为负；
+  **量化的收益要到 NPU（RKNN / TensorRT）上才兑现**，那里有原生 INT8 算力。
+  因此 `use_int8_detector` 默认为 False，转 RKNN 时再打开。
+
+人脸检测仍走 OpenCV 的 `FaceDetectorYN`，因为 YuNet 的解码与 NMS 已经封装在里面，
+自己在 onnxruntime 上重写后处理没有收益（实测 320x240 单线程 5.3 ms，不是瓶颈）。
 """
 from __future__ import annotations
 
@@ -112,7 +122,9 @@ class OnnxDmsBackend(PerceptionBackend):
 
         self._obj = None
         if enable_objects and self._obj_path.exists():
-            self._obj = cv2.dnn.readNet(str(self._obj_path))
+            self._obj = ort.InferenceSession(str(self._obj_path), so,
+                                             providers=["CPUExecutionProvider"])
+            self._obj_in = self._obj.get_inputs()[0].name
             self._obj_mean = np.array([103.53, 116.28, 123.675], np.float32).reshape(1, 1, 3)
             self._obj_std = np.array([57.375, 57.12, 58.395], np.float32).reshape(1, 1, 3)
             self._obj_strides = (8, 16, 32)
@@ -205,8 +217,8 @@ class OnnxDmsBackend(PerceptionBackend):
         h, w = img.shape[:2]
         r = cv2.resize(img, (416, 416)).astype(np.float32)
         r = (r - self._obj_mean) / self._obj_std
-        self._obj.setInput(cv2.dnn.blobFromImage(r))
-        outs = self._obj.forward(self._obj.getUnconnectedOutLayersNames())
+        outs = self._obj.run(None, {self._obj_in: cv2.dnn.blobFromImage(r)})
+        # 输出按「通道数 + 空间尺寸」配对，不依赖 ONNX 里的输出顺序
         cls = sorted((o for o in outs if o.shape[-1] == 80), key=lambda o: -o.shape[1])
         box = sorted((o for o in outs if o.shape[-1] == 32), key=lambda o: -o.shape[1])
         B, S = [], []
@@ -296,7 +308,7 @@ class OnnxDmsBackend(PerceptionBackend):
                              "size_kb": round(self._face_path.stat().st_size / 1024, 1)},
                 "landmark": {"file": self._lmk_path.name, "runtime": "onnxruntime",
                              "size_kb": round(self._lmk_path.stat().st_size / 1024, 1)},
-                "object_det": ({"file": self._obj_path.name, "runtime": "OpenCV DNN",
+                "object_det": ({"file": self._obj_path.name, "runtime": "onnxruntime",
                                 "size_kb": round(self._obj_path.stat().st_size / 1024, 1)}
                                if self._obj is not None else None),
             },

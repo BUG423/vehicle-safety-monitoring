@@ -29,7 +29,9 @@ class EdgeConfig:
     face_score_thr: float = 0.7
     object_stride: int = 5          # 目标检测降频：每 N 帧跑一次
     object_score_thr: float = 0.35
-    use_int8_detector: bool = True  # 优先用 INT8 权重（嵌入式默认）
+    # CPU 上 INT8 ONNX 反而更慢（实测 78.0ms vs FP32 27.1ms，QDQ 图要反复反量化）；
+    # 量化收益要到 NPU 上才兑现，转 RKNN/TensorRT 时再打开。
+    use_int8_detector: bool = False
 
     # ---- 疲劳（PERCLOS）----
     perclos_window_s: float = 30.0  # PERCLOS 统计窗口
@@ -37,10 +39,15 @@ class EdgeConfig:
     eye_close_ratio: float = 0.62   # 相对个体基线的闭眼判定系数
     baseline_warmup_s: float = 5.0  # 个体基线标定时长
     yawn_ratio: float = 0.55        # 嘴部张开比阈值（打哈欠）
+    micro_sleep_s: float = 1.2      # 连续闭眼超过该时长即判疲劳（微睡眠），不必等 PERCLOS 攒够
 
     # ---- 分心（头部姿态）----
     yaw_thr_deg: float = 32.0
     pitch_thr_deg: float = 24.0
+
+    # ---- 手机 ----
+    # 各后端输出的 phone_score 统一归一化到 0~1 的置信度，阈值才可能跨后端通用
+    phone_score_thr: float = 0.5
 
     # ---- 安全带 ----
     belt_line_min_len: float = 0.35     # 归一化最短带体线段长度
@@ -51,7 +58,10 @@ class EdgeConfig:
     harsh_accel_thr: float = 3.5        # m/s^2，急加速/急刹阈值
 
     # ---- 遮挡 ----
-    blur_thr: float = 12.0              # 拉普拉斯方差低于此值判定镜头遮挡/失效
+    # 拉普拉斯方差的绝对值随场景差异巨大（实测：素色背景的正常画面只有 9 左右），
+    # 因此绝对阈值只作为「全黑帧」的兜底，真正的判据是相对自身历史基线的塌陷。
+    blur_abs_floor: float = 2.0         # 低于此值一定是黑帧/完全遮挡
+    blur_rel_ratio: float = 0.35        # 低于自身基线该比例，且画面中无人 → 判遮挡
 
     # ---- 告警 ----
     backend_url: str = "http://127.0.0.1:18080/api/events"
