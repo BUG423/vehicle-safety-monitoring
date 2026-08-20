@@ -10,19 +10,22 @@
 
 ## 30 秒跑起来
 
+一键入口（无需任何 API key，自动走 mock，全链路照样通）：
+
 ```bash
 cd <仓库根目录>
+./mode-a-vlm/run_demo.sh check     # 跑一次命令行端到端检测
+./mode-a-vlm/run_demo.sh test      # 跑 27 条回归测试
+./mode-a-vlm/run_demo.sh           # 起服务，浏览器打开 http://<本机IP>:8000/
+```
 
-# 1) 生成合成测试图（1 秒）
+或者手动分步：
+
+```bash
 python3 mode-a-vlm/scripts/gen_test_images.py --out mode-a-vlm/testdata
-
-# 2) 无需任何 API key，跑通全链路（mock 后端）
 python3 mode-a-vlm/scripts/run_pipeline.py mode-a-vlm/testdata/driver_no_seatbelt.jpg \
     --provider mock --scenario driver_no_seatbelt
-
-# 3) 起服务 + 手机页面
 python3 -m uvicorn vlm_safety.server:app --app-dir mode-a-vlm --host 0.0.0.0 --port 8000
-# 浏览器打开 http://<本机IP>:8000/
 ```
 
 用真实云端模型（本项目实测用的是硅基流动）：
@@ -40,6 +43,10 @@ python3 mode-a-vlm/scripts/run_pipeline.py mode-a-vlm/evalset/images/12.jpg
 ---
 
 ## 依赖
+
+```bash
+pip install -r mode-a-vlm/requirements.txt
+```
 
 ```
 Python 3.10+
