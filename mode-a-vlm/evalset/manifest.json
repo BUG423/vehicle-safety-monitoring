@@ -1,0 +1,169 @@
+{
+  "_说明": "模式A 的真实照片小规模验证集。图片本身不入库（署名要求 + 仓库体积），只存元数据与人工标注；用 scripts/fetch_evalset.py 拉取。",
+  "_标注人": "模式A 开发者人工标注（单人标注，未做双人交叉校验）",
+  "_规模警告": "13 张，非标准数据集，样本量不足以给出统计显著的精度结论。它验证的是「真实照片上模型是否给出可用的结构化判断」与「保守/激进倾向」，不能作为向甲方承诺的精度指标。",
+  "_标注口径": {
+    "scene": "cabin=车内座舱视角；exterior=车外拍摄（能看到人但不是 DMS 相机视角）；not_cabin=完全不是车辆座舱",
+    "driver_seatbelt": "fastened=可见斜跨织带；not_fastened=肩部清晰可见且确认无织带；undecidable=人工也无法确定（遮挡/角度/衣物同色）",
+    "phone": "yes=画面中有人手持手机；no=未见手机；undecidable=无法确定",
+    "note": "undecidable 是合法答案。模型在此类样本上输出 unknown/occluded 记为正确，输出确定结论记为「过度自信」。"
+  },
+  "items": [
+    {
+      "id": "00",
+      "commons": "File:Man texting while driving.jpg",
+      "license": "CC BY 3.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Man_texting_while_driving.jpg/1280px-Man_texting_while_driving.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "exterior",
+        "driver_seatbelt": "undecidable",
+        "phone": "yes"
+      },
+      "desc": "车外侧拍，绿色轿车内驾驶员单手持手机"
+    },
+    {
+      "id": "01",
+      "commons": "File:Cell phone use while driving.jpg",
+      "license": "CC BY-SA 2.5",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Cell_phone_use_while_driving.jpg/1280px-Cell_phone_use_while_driving.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "yes"
+      },
+      "desc": "车内视角，方向盘上方一只手持翻盖手机，人体未入镜"
+    },
+    {
+      "id": "03",
+      "commons": "File:Texting while at the wheel (4351110509).jpg",
+      "license": "CC BY 2.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/e/e3/Texting_while_at_the_wheel_%284351110509%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "yes"
+      },
+      "desc": "特写，双手在方向盘前捧着手机打字"
+    },
+    {
+      "id": "04",
+      "commons": "File:Texting campaign 039 (4749993290).jpg",
+      "license": "CC BY-SA 2.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Texting_campaign_039_%284749993290%29.jpg/1280px-Texting_campaign_039_%284749993290%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "not_cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "no"
+      },
+      "desc": "越界输入：户外广场上一群人在跳舞，与车辆无关"
+    },
+    {
+      "id": "06",
+      "commons": "File:Female driver buckling seatbelt.jpg",
+      "license": "CC BY 2.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Female_driver_buckling_seatbelt.jpg/1280px-Female_driver_buckling_seatbelt.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "fastened",
+        "phone": "no"
+      },
+      "desc": "车内女性正在扣安全带，织带清晰斜跨躯干"
+    },
+    {
+      "id": "07",
+      "commons": "File:Teen fastening seat belt.jpg",
+      "license": "CC BY 2.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Teen_fastening_seat_belt.jpg/1280px-Teen_fastening_seat_belt.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "fastened",
+        "phone": "no"
+      },
+      "desc": "驾驶位少年系安全带，黑色织带从右肩斜跨"
+    },
+    {
+      "id": "08",
+      "commons": "File:Buckle up 121208-A-TA765-040.jpg",
+      "license": "Public domain",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Buckle_up_121208-A-TA765-040.jpg/1280px-Buckle_up_121208-A-TA765-040.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "not_cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "no"
+      },
+      "desc": "越界输入：直升机机舱内士兵为儿童系五点式安全带（不是汽车座舱）"
+    },
+    {
+      "id": "09",
+      "commons": "File:Man driving car near coast (Unsplash).jpg",
+      "license": "CC0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Man_driving_car_near_coast_%28Unsplash%29.jpg/1280px-Man_driving_car_near_coast_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "no"
+      },
+      "desc": "车内前排视角，仅见一只手握方向盘，人体与肩部不在画面内"
+    },
+    {
+      "id": "10",
+      "commons": "File:Old woman driving blue car (Unsplash).jpg",
+      "license": "CC0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Old_woman_driving_blue_car_%28Unsplash%29.jpg/1280px-Old_woman_driving_blue_car_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "exterior",
+        "driver_seatbelt": "undecidable",
+        "phone": "no"
+      },
+      "desc": "车外侧拍整车，驾驶员仅从侧窗露出头部"
+    },
+    {
+      "id": "11",
+      "commons": "File:Woman smiles while driving.jpg",
+      "license": "Public domain",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/34/Woman_smiles_while_driving.jpg/1280px-Woman_smiles_while_driving.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "no"
+      },
+      "desc": "驾驶位女性侧身微笑，皮夹克与织带同色，人工也难以确认是否系带"
+    },
+    {
+      "id": "12",
+      "commons": "File:Young woman sits in a car, contemplating life as sunset light filters through the windshield (Unsplash).jpg",
+      "license": "CC BY 2.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Young_woman_sits_in_a_car%2C_contemplating_life_as_sunset_light_filters_through_the_windshield_on_an_outdoor_road.jpg/1280px-Young_woman_sits_in_a_car%2C_contemplating_life_as_sunset_light_filters_through_the_windshield_on_an_outdoor_road.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "not_fastened",
+        "phone": "no"
+      },
+      "desc": "透过前挡拍摄驾驶位女性，肩部裸露清晰可见，无任何织带"
+    },
+    {
+      "id": "13",
+      "commons": "File:Bus Driver in Kigali Rwanda.jpg",
+      "license": "CC BY-SA 4.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Bus_Driver_in_Kigali_Rwanda.jpg/1280px-Bus_Driver_in_Kigali_Rwanda.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "labels": {
+        "scene": "cabin",
+        "driver_seatbelt": "fastened",
+        "phone": "no"
+      },
+      "desc": "客车驾驶员侧面，浅色织带从右肩斜跨至左腰，清晰可见"
+    },
+    {
+      "id": "14",
+      "commons": "File:Carsercise, Fitness Behind the Wheel.jpg",
+      "license": "CC BY-SA 3.0",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/2c/Carsercise%2C_Fitness_Behind_the_Wheel.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "labels": {
+        "scene": "not_cabin",
+        "driver_seatbelt": "undecidable",
+        "phone": "no"
+      },
+      "desc": "越界输入：一页纯文字文档截图"
+    }
+  ]
+}

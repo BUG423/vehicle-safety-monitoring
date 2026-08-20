@@ -1,0 +1,18 @@
+# 模式A：VLM 图片理解
+# 核心依赖只有四个，刻意保持精简 —— 车载/边缘侧镜像越薄越好。
+fastapi>=0.110
+uvicorn>=0.27
+pillow>=10.0
+requests>=2.31
+
+# 可选：人脸脱敏（VSM_BLUR_FACES=1）与 bench 视频抽帧
+opencv-python>=4.8
+
+# 可选：跑回归测试
+pytest>=7.4
+
+# 说明：
+# - 不需要 python-multipart —— 图片走 JSON + base64，手机端 canvas.toDataURL() 直接就是这个格式。
+# - 不需要任何厂商 SDK —— 云端后端全部用裸 HTTP 调用，避免 SDK 版本漂移。
+# - 本地后端（VSM_VLM_PROVIDER=local）另需 torch + transformers + accelerate，
+#   本次未实测通过，见 README「当前实测到什么程度」。
