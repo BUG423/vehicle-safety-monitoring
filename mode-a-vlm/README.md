@@ -61,6 +61,7 @@ pytest                                 # 可选：跑测试
 | FastAPI 服务 + 手机 H5 | ✅ 跑通（mock 与真实后端都验证过） |
 | 真实照片验证集（13 张，人工标注） | ✅ 跑通，三个模型横向对比见下 |
 | 多帧序列 + PERCLOS 时序疲劳 | ✅ mock 下跑通（4.0 秒确认告警，正常序列零误报） |
+| 公共基准 `bench/` | ✅ 真实 VLM 跑通：**误报 0 次**，告警延迟平均 28 秒，检出 2/4（合成卡通素材，检出率不可用于评价 VLM，见下） |
 | Anthropic / OpenAI / DashScope 后端 | ❌ **未实测**——本环境无这三家的 key。代码按公开接口规范编写，缺 key 时 `health()` 明确报 not ready |
 | 本地开源 VLM（`providers/local_hf.py`） | ❌ **未实测通过**。原计划用 A100 跑 Qwen2.5-VL-7B，权重下载到约 6.3GB/16.6GB 时团队决策转向云端 API，下载终止。代码可导入、`health()` 正常，但**从未真实加载过权重、从未产生过一次本地推理** |
 | 夜间 / 逆光 / 红外 / 口罩墨镜 鲁棒性 | ❌ 未测 |
@@ -123,6 +124,38 @@ python3 mode-a-vlm/scripts/eval_models.py \
 
 **换模型必须重跑一遍结构化合规性检查，不能默认"更大的模型更听话"。**
 详见 [DESIGN.md §2.6](DESIGN.md)。
+
+---
+
+## 公共基准 `bench/` 实测
+
+```bash
+python3 bench/make_clip.py --out bench/clips/scenario_a
+source /root/.config/vsm/env
+python3 mode-a-vlm/scripts/run_bench.py --clip bench/clips/scenario_a.mp4 \
+    --provider siliconflow --model Qwen/Qwen3-VL-32B-Instruct --stride 2.0 --batch 2 \
+    --out runs/mode_a_events.jsonl
+python3 bench/score.py --truth bench/clips/scenario_a_truth.json \
+    --events runs/mode_a_events.jsonl --label 模式A
+```
+
+模式A 不逐帧跑（每帧一次云端调用在延迟和成本上都不成立），而是**每 2 秒抽一帧、每 2 帧一次调用**。
+28 帧 / 14 次调用，墙钟 787 秒：
+
+```
+检出率      2/4  (50%)
+告警延迟    平均 28.00s / 最慢 46.00s
+误报        0 次  (0.00 次/分钟)
+```
+
+**三个数字含义完全不同，必须分开读：**
+
+- **误报 0 次** —— 真实有效。9 个干扰项（6 次眨眼、3 次短暂低头）一个都没骗到确认器，
+  可以直接与模式B/C 横向对比。
+- **告警延迟 28 秒** —— 真实有效，而且**这就是模式A 的天花板**。它由「抽帧间隔 + 云端往返」
+  决定，与感知精度无关。**这是模式A 不能做实时监控的量化证据。**
+- **检出率 50%** —— ⚠️ **不能用来评价 VLM 的感知能力**。合成卡通素材不在 VLM 的分布内，
+  模型会把安全带认成「一根细长的棍子」。同一套代码在真实照片上安全带正确率是 **85%**。
 
 ---
 

@@ -140,7 +140,26 @@ system prompt 也明确禁止推理画面外的信息。想编都没地方写。
 **这条经验值得写进选型报告**：结构化输出的稳定性一半取决于 schema 怎么呈现，
 换模型时必须重跑一遍结构化合规性检查，不能默认「更大的模型一定更听话」。
 
-### 2.7 还可以做但本次没做的
+### 2.7 另一个真实故障：输出预算不足导致 JSON 被硬切
+
+在 bench 上跑多帧时，连续 7 次调用全部「解析失败」。第一反应是模型不会输出 JSON，
+实际查下来 `finish_reason` 是 `length`——输出撞上了 `max_tokens=1200` 上限，
+JSON 在中间被硬切，末尾是半截字符串和一堆没闭合的括号。
+
+2 帧 × 2 名乘员 × 7 个属性 × 每个属性一句中文 evidence，输出轻松超过 1200 token。
+固定的输出预算在单帧时够用，一到多帧就不够。
+
+两处修复：
+
+1. **预算随帧数线性增长**：`max_tokens = max(配置值, 700 + 700 × 帧数)`；
+2. **截断抢救**（`parser._salvage_truncated`）：从末尾退回最后一个完整的对象边界，
+   按栈里剩余层级补齐闭合符号，把**已经完整输出的帧**救出来，并标记 `repaired=True`。
+   否则前面几帧的 token 就白花了。
+
+顺带把 `run_bench.py` 的日志改成区分「调用失败」和「解析失败」——
+两者混在一起会把「超时/预算不足」误诊成「模型不会输出 JSON」，排查方向完全跑偏。
+
+### 2.8 还可以做但本次没做的
 
 - **自一致性投票**：同一张图采样 N 次取多数票（`VSM_VLM_SELF_CONSISTENCY`，代码里预留了配置项但未启用）。
   成本线性翻倍，换稳定性。发车前检查每天才 2 次，这个成本完全付得起，值得在甲方定型后开启。
@@ -269,9 +288,65 @@ AUC Distracted Driver 这类真实标注数据集，应在甲方需求定型后�
 | **保守** | 人工能判定，模型给 unknown | 漏检，但不打扰司机，可接受 |
 | **错误** | 模型给了与人工相反的确定结论 | 严重 |
 
-### 5.4 实测结果
+### 5.4 实测结果（2026-08-20，硅基流动 API）
 
-见 §5.5 的表格（每次跑 `scripts/eval_models.py` 都会重新生成 `evalset/results.json`）。
+| 模型 | 场景判别 | 驾驶员安全带 | 手机使用 | **过度自信** | 平均延迟 | 最慢 | 解析失败 | 输出 token |
+|---|---|---|---|---|---|---|---|---|
+| Qwen3-VL-8B-Instruct | 69% | 85% | 85% | **0** | 17.6s | 60.1s | 2/13 | 344 |
+| **Qwen3-VL-32B-Instruct** | **85%** | **85%** | **92%** | 1 | 24.5s | 54.6s | **0/13** | 411 |
+| GLM-4.5V | 62% | 69% | 85% | **3** | 21.2s | 60.2s | 2/13 | 957 |
+
+输入均约 1545 token（含约 1100 视觉 token + 约 450 提示词）。
+
+**结论：**
+
+1. **Qwen3-VL-32B 是当前最优选。** 三个轴都最好，13 张图**零解析失败**——
+   结构化输出的稳定性在工程上比精度更值钱，解析失败等于这次调用白花钱。
+2. **GLM-4.5V 不适合这个场景。** 3 次「过度自信」（人工都看不清安全带，它给了确定结论），
+   这在车载场景下会直接变成误报；而且输出 token 是 Qwen 的 2.8 倍（大量思维链），
+   成本与延迟双输。
+3. **8B 是"保守但可用"的性价比档。** 过度自信 0 次，代价是场景判别弱一些（69%）。
+   成本敏感时可用 8B + 提高置信度阈值。
+4. **两个模型都会把「车外侧拍」误判成 `cabin_front`。** 场景判别的两次错误都出在这里。
+   实际部署中相机位置固定，这一项风险不大，但说明模型对「拍摄视角」的理解弱于对「画面内容」的理解。
+
+### 5.5 公共基准 `bench/` 上的实测 —— 一个有价值的负面结果
+
+团队的 `bench/scenario_a` 是 55 秒合成卡通驾驶舱视频，标注了 4 段违规和 9 个干扰项。
+模式A 用 `scripts/run_bench.py` 跑：每 2 秒抽一帧、每 2 帧一次调用，
+共 28 帧 / 14 次 Qwen3-VL-32B 调用，墙钟 787 秒。
+
+```
+=== 模式A (Qwen3-VL-32B, 抽帧2s/批2帧) ===
+检出率      2/4  (50%)
+告警延迟    平均 28.00s / 最慢 46.00s
+误报        0 次  (0.00 次/分钟)
+
+driver.no_seatbelt    [ 2-14s]  ✓  10.00s
+driver.fatigue        [20-34s]  ✗   —
+driver.phone_use      [40-48s]  ✗   —
+passenger.no_seatbelt [ 6-52s]  ✓  46.00s
+```
+
+**这三个数字要分开读，含义完全不同：**
+
+- **误报 0 次**：真实且有意义。9 个干扰项（6 次眨眼、3 次短暂低头）**一个都没骗到**
+  防误报确认器。这条结论可以直接和模式B/C 横向比。
+- **告警延迟 28 秒**：真实且有意义，而且**这就是模式A 的天花板**。
+  它由「抽帧间隔 2 秒 + 云端往返 40~130 秒 / 2 帧」决定，跟感知精度无关。
+  即使模型 100% 准确，这个延迟也降不下来——**这是模式A 不能做实时监控的量化证据**。
+- **检出率 50%**：**不能用来评价 VLM 的感知能力**。合成卡通素材不在 VLM 的分布内，
+  实测中模型会把卡通人物描述成「坐在桌子后面的人」、把安全带认成「一根细长的棍子」。
+  同一套代码在 `evalset/` 的**真实照片**上安全带正确率是 85%（§5.4）。
+  拿 50% 去论证「VLM 不行」是错误的结论。
+
+顺带一提，漏掉的两项恰好印证了 §3 和 §4 的分析：
+`driver.fatigue` 需要连续时序（2 帧一批根本不够），
+`driver.phone_use` 在卡通画面里没有可识别的手机形状。
+
+**给汇总方的建议**：三条路线在 bench 上的**误报数**和**告警延迟**可以直接横向对比；
+**检出率不能横向对比**——模式B/C 用的是在真实数据上训练的检测器，
+合成素材对它们同样不友好，但不友好的方式和 VLM 不一样。
 
 ---
 
@@ -282,13 +357,17 @@ AUC Distracted Driver 这类真实标注数据集，应在甲方需求定型后�
 硅基流动 API，图片缩放至长边 896（约 1100 视觉 token），prompt 约 1300 token，
 输出约 400 token，`max_tokens=1200`：
 
-| 模型 | 单帧平均延迟 | 备注 |
-|---|---|---|
-| Qwen3-VL-8B-Instruct | 见 §5.5 | 波动大（8s~46s），受服务端排队影响明显 |
-| Qwen3-VL-32B-Instruct | 见 §5.5 | |
-| GLM-4.5V | 见 §5.5 | |
+| 模型 | 单帧平均延迟 | 最快 | 最慢 |
+|---|---|---|---|
+| Qwen3-VL-8B-Instruct | **17.6s** | 3.7s | 60.1s |
+| Qwen3-VL-32B-Instruct | **24.5s** | 2.6s | 54.6s |
+| GLM-4.5V | **21.2s** | 2.4s | 60.2s |
 
-**延迟波动比绝对值更值得关注**：同一模型同样大小的图，实测从 8 秒到 46 秒都有。
+多帧批量更慢：bench 上 2 帧一批、Qwen3-VL-32B，14 次调用**平均 56.2 秒/次**，最慢 129.6 秒，
+其中还有 1 次服务端 HTTP 500。
+
+**延迟波动比绝对值更值得关注**：同一模型同样大小的图，实测从 2.4 秒到 60.2 秒都有，
+最慢是最快的 25 倍。
 公有云推理服务的排队延迟不可控，这从根本上决定了
 **模式A 不能出现在任何有实时性要求的链路里**——
 你没法向甲方承诺「违规后 3 秒内告警」，因为你控制不了别人的 GPU 队列。
@@ -408,52 +487,34 @@ AUC Distracted Driver 这类真实标注数据集，应在甲方需求定型后�
 
 ## 9. 对契约层（`common/`）的修改建议
 
-模式A 实现过程中发现的问题与需求，**未直接修改 `common/`**，列在这里由汇总方统一决定。
+模式A **没有直接改过 `common/`**。下面分两部分：已被上游采纳的、以及仍待决定的。
 
-### 9.1 已被上游修复的问题
+### 9.1 已被上游修复（本分支已 rebase 验证）
 
-`common/alerting/channels.py` 的 `InCabinChannel._speech_text()` 里有一个函数内的
-局部导入 `from violation_types import ViolationType as VT`。以包方式引入 `common` 时
-（`from common.alerting.channels import ...`），模块顶部的相对导入会成功，
-于是 `sys.path` 不会被追加，这个裸模块名导入必然抛 `ModuleNotFoundError`，
-导致 `InCabinChannel.send()` 恒返回 `False`——**车内提醒静默失效**。
-本分支 rebase 到 `origin/main` 后确认已由上游修复（commit `68b833c`），此处仅作记录。
+| 问题 | 上游处理 |
+|---|---|
+| `InCabinChannel._speech_text()` 用了裸模块名的函数内导入 `from violation_types import ...`。以包方式引入 `common` 时顶部相对导入成功、`sys.path` 不会被追加，这个导入必然抛 `ModuleNotFoundError`，导致 `InCabinChannel.send()` 恒返回 `False`——**车内提醒静默失效**。本分支最早的验证脚本就撞上了这个 | 已修（commit `68b833c`） |
+| `SafetyEvent.from_dict()` 丢失 `subject.role`：`Subject(**{**d.pop("subject", {}), "role": SubjectRole(d.get("subject", {}).get("role", "unknown"))})` 里 `pop` 先于 `get` 求值，`role` 永远解析成 `UNKNOWN`，再被 `__post_init__` 用违规类型的默认角色静默覆盖。平时看不出来，一旦出现「role 与违规前缀不一致」的事件（后排乘客触发某个 `driver.*` 类型）往返后角色就被改写 | 已修（schema 1.1） |
+| 缺少模型版本字段，多模型灰度时无法把误报归因到具体模型 | 已加 `Evidence.model_version`（schema 1.1）。模式A 填 `provider:model`，例如 `siliconflow:Qwen/Qwen3-VL-32B-Instruct` |
+| 静止时判分心/看手机不合理 | 已加 `ConfirmRule.min_speed_kmh` 车速门控（schema 1.1）。**安全带类刻意不门控是对的**——发车前静止检查正是模式A 的主场景 |
+| 断网落盘无上限 | 已加 `BackendChannel.max_spool_files` |
 
-### 9.2 `SafetyEvent.from_dict()` 的 role 在往返中丢失
+### 9.2 仍建议增加的字段与枚举
 
-```python
-subject = Subject(**{**d.pop("subject", {}), "role": SubjectRole(d.get("subject", {}).get("role", "unknown"))})
-```
+| 建议 | 位置 | 理由 | 优先级 |
+|---|---|---|---|
+| **`SafetyEvent` 增加「判不了」的表达能力**（新增 `undecidable` 字段，或用 `Severity.INFO` + 专门的 `ViolationType.SYSTEM_UNDECIDABLE`） | `safety_event.py` | **这是模式A 最想要的一个**。目前 `SafetyEvent` 只能表达「发生了违规」，无法表达「这项没检成」。发车前检查如果因遮挡判不了安全带，**后台必须知道**，否则「没收到事件」会被当成「检查通过」。模式A 现在只能把它留在 API 响应里，进不了后台 | **高** |
+| `Evidence.evidence_text: str \| None` | `safety_event.py` | VLM 给出的中文文字依据是模式A 的核心产出（申诉/复核用），现在只能塞进 `raw_signals`，后台无法结构化查询。而且它是**隐私友好**的：不回放影像、光看文字就能复核 | 中 |
+| `VehicleContext.seat_capacity: int \| None` | `safety_event.py` | 超员判定需要核载人数。目前各模式各自配置，三条路线口径会不一致 | 中 |
+| `ViolationType.PASSENGER_SMOKING` | `violation_types.py` | 目前只有 `driver.smoking`；乘客抽烟在客运车辆场景是明确违规项，VLM 已经能看出来但无处安放 | 低 |
+| `DetectionMode.HYBRID` | `violation_types.py` | 「车端初筛 + 云端复核」（§8 论证的最可能落地形态）产生的事件既不是纯 A 也不是纯 C，混在一起会让三路线对比统计失真 | 低 |
 
-`d.pop("subject")` 先执行，随后的 `d.get("subject", {})` 拿到的是空字典，
-`role` 永远被解析成 `UNKNOWN`。目前没有暴露问题，是因为 `__post_init__` 会用
-`violation.default_role` 把 role 补回来——但这掩盖了 bug：
-一旦出现「role 与违规类型前缀不一致」的事件（例如后排乘客触发了某个 `driver.*` 类型），
-往返后 role 就会被悄悄改写。
+### 9.3 文档层面的建议
 
-建议改成：
-
-```python
-raw_subject = d.pop("subject", None) or {}
-subject = Subject(**{**raw_subject, "role": SubjectRole(raw_subject.get("role", "unknown"))})
-```
-
-### 9.3 缺少的字段与枚举（模式A 用得上）
-
-| 建议 | 位置 | 理由 |
-|---|---|---|
-| `VehicleContext.seat_capacity: int \| None` | `safety_event.py` | 超员判定需要核载人数，目前只能由各模式自己配置，三条路线口径会不一致 |
-| `Evidence.evidence_text: str \| None` | `safety_event.py` | VLM 给出的文字依据是模式A 的核心产出（申诉/复核用），现在只能塞进 `raw_signals`，后台无法结构化查询 |
-| `SafetyEvent.undecidable` 或独立的「判不了」事件通道 | `safety_event.py` | 「看不清」必须能上报后台。目前 `SafetyEvent` 只能表达「发生了违规」，无法表达「这项没检成」。**这是模式A 最想要的一个字段**——发车前检查如果因遮挡判不了安全带，后台必须知道 |
-| `ViolationType.PASSENGER_SMOKING` | `violation_types.py` | 目前只有 `driver.smoking`；乘客抽烟在客运车辆场景是明确的违规项 |
-| `DetectionMode.HYBRID` | `violation_types.py` | 「车端初筛 + 云端复核」产生的事件既不是纯 A 也不是纯 C，建议单列，否则对比统计会失真 |
-
-### 9.4 `ConfirmRule` 的语义建议
-
-`ViolationConfirmer` 是按**流式逐帧**设计的（`window_s` 按墙钟时间滑动）。
-模式A 的批量多帧调用需要按「视频内时间」推进，目前靠 `update(now=...)` 传入
-帧的相对时间戳解决，可行但属于隐式约定。建议在 `ViolationConfirmer` 的文档里
-明确写出「`now` 可以是任意单调递增的时间轴，不必是墙钟」，避免其他模式误用。
+`ViolationConfirmer` 是按**流式逐帧**设计的（`window_s` 按墙钟滑动）。
+模式A 的批量多帧调用需要按「视频内时间」推进，目前靠 `update(now=帧的相对时间戳)` 解决，
+可行，但属于隐式约定。建议在 `ViolationConfirmer` 的 docstring 里明确写出
+「`now` 可以是任意单调递增的时间轴，不必是墙钟时间」，避免其他模式误用。
 
 ---
 
@@ -472,3 +533,6 @@ subject = Subject(**{**raw_subject, "role": SubjectRole(raw_subject.get("role", 
 6. **人脸脱敏用的是 OpenCV Haar 级联**，对侧脸和遮挡漏检明显，生产环境应换成
    专用人脸检测模型；当前实现会在检测器不可用时如实标记，不会假装脱敏成功。
 7. **成本数字是按公开标价的量级测算，不是账单实测**。
+8. **公有云推理有不可忽略的失败率**：bench 的 14 次调用里出现 1 次服务端 HTTP 500，
+   延迟最慢一次 129.6 秒。生产环境必须做重试与降级，不能假设调用一定成功。
+9. **`bench/` 上的 50% 检出率不代表 VLM 的真实感知能力**（§5.5）——合成卡通素材不在 VLM 的分布内。
