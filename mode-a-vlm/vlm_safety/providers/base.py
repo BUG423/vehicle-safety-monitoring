@@ -58,6 +58,18 @@ class VLMProvider(ABC):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.model = settings.model or self.default_model
+        #: 由调用方按本次请求的帧数临时抬高输出预算（见 max_tokens）
+        self.max_tokens_override: int | None = None
+
+    @property
+    def max_tokens(self) -> int:
+        """本次调用允许的输出 token 上限。
+
+        多帧请求的输出长度随帧数、乘员数线性增长。踩过的坑：固定 1200 时
+        2 帧 × 2 名乘员就会 ``finish_reason=length`` 被截断，JSON 不完整、
+        解析全部失败——日志上看起来像"模型不会输出 JSON"，实际是预算给少了。
+        """
+        return self.max_tokens_override or self.settings.max_tokens
 
     @property
     def default_model(self) -> str:

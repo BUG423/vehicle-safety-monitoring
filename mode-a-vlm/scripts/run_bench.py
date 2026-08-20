@@ -105,9 +105,17 @@ def main() -> int:
                 d["raw_signals"]["clip_t"] = round(ev.ts, 2)
                 f.write(json.dumps(d, ensure_ascii=False) + "\n")
                 n_events += 1
+            # 区分「调用失败」和「解析失败」—— 前者是超时/网络，后者才是模型输出格式问题，
+            # 混在一起会把「多帧批量把请求撑爆了 60 秒超时」误诊成「模型不会输出 JSON」。
+            if res.vlm and not res.vlm.ok:
+                status = f"调用失败({(res.vlm.error or '')[:48]})"
+            elif res.parse and not res.parse.ok:
+                status = f"解析失败({(res.parse.error or '')[:32]})"
+            else:
+                status = "OK"
             print(f"  [{clip_ts[0]:5.1f}s-{clip_ts[-1]:5.1f}s] "
                   f"VLM {res.timings_ms.get('vlm', 0):6.0f}ms  "
-                  f"事件 {len(res.events)}  解析 {'OK' if res.ok else '失败'}"
+                  f"事件 {len(res.events)}  {status}"
                   + (f"  {[e.violation.value for e in res.events]}" if res.events else ""))
 
     pipe.close()

@@ -159,6 +159,62 @@ def _extract_balanced(text: str) -> str | None:
     return None
 
 
+def _salvage_truncated(text: str) -> str | None:
+    """抢救被 ``max_tokens`` 截断的 JSON。
+
+    真实故障：多帧请求输出超过预算，服务端在 JSON 中间硬切
+    （``finish_reason=length``），末尾是半截字符串和一堆没闭合的括号。
+    直接丢弃等于整次调用白花钱，而前面已经完整输出的帧其实完全可用。
+
+    做法：从末尾往前退到最后一个完整的对象边界，再按栈里剩下的层级补齐闭合符号。
+    抢救出来的结果会带 ``repaired=True``，调用方能看出这次输出是残缺的。
+    """
+    stack: list[str] = []
+    in_str = esc = False
+    last_safe = -1          # 最后一个「刚闭合完一层且不在字符串里」的位置
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            if len(stack) <= 2:      # 顶层 / frames 数组 / 单帧对象 这一层
+                last_safe = i
+    if last_safe < 0:
+        return None
+
+    head = text[:last_safe + 1]
+    # 重新扫一遍 head，算出还欠哪些闭合符号
+    stack = []
+    in_str = esc = False
+    for ch in head:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack:
+            stack.pop()
+    return head + "".join(reversed(stack))
+
+
 def _repair(text: str) -> str:
     """修复模型常犯的 JSON 语法错误。"""
     t = text
@@ -190,6 +246,13 @@ def load_json_lenient(text: str) -> tuple[Any | None, bool, str | None]:
             except json.JSONDecodeError as exc:
                 last = str(exc)
                 continue
+    # 最后一招：按「被截断」处理，抢救已完整输出的部分
+    salvaged = _salvage_truncated(_repair(candidate))
+    if salvaged:
+        try:
+            return json.loads(salvaged), True, None
+        except json.JSONDecodeError:
+            pass
     return None, False, f"JSON 解析失败：{last if 'last' in dir() else '未找到合法 JSON 片段'}"
 
 

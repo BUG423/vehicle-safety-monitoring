@@ -105,7 +105,7 @@ class LocalHFProvider(VLMProvider):
         with torch.inference_mode():
             out = self._model.generate(
                 **inputs,
-                max_new_tokens=self.settings.max_tokens,
+                max_new_tokens=self.max_tokens,
                 do_sample=self.settings.temperature > 0,
                 temperature=max(self.settings.temperature, 1e-5),
             )

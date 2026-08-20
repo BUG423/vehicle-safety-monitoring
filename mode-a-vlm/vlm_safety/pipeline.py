@@ -133,6 +133,8 @@ class SafetyPipeline:
         # --- 2. 调 VLM ---
         system = P.SYSTEM_PROMPT
         user = P.build_user_prompt(n)
+        # 输出预算随帧数线性增长，否则多帧请求会被 max_tokens 截断成不完整 JSON
+        self.provider.max_tokens_override = max(self.settings.max_tokens, 700 + 700 * n)
         t0 = time.perf_counter()
         vlm = self.provider.analyze(prepared, system, user)
         result.timings_ms["vlm"] = (time.perf_counter() - t0) * 1000

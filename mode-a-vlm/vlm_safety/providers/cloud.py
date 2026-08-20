@@ -72,7 +72,7 @@ class AnthropicProvider(_HttpProvider):
 
         body = {
             "model": self.model,
-            "max_tokens": self.settings.max_tokens,
+            "max_tokens": self.max_tokens,
             "temperature": self.settings.temperature,
             "system": system,
             "messages": [{"role": "user", "content": content}],
@@ -126,7 +126,7 @@ class OpenAICompatProvider(_HttpProvider):
             "model": self.model,
             "messages": self._build_messages(images, system, user),
             "temperature": self.settings.temperature,
-            "max_tokens": self.settings.max_tokens,
+            "max_tokens": self.max_tokens,
             # 要求 JSON 输出。部分兼容网关不支持该字段，失败时会在 error 里体现，
             # 由调用方去掉 response_format 重试（见 pipeline 的降级逻辑）。
             "response_format": {"type": "json_object"},
@@ -168,7 +168,7 @@ class DashScopeProvider(OpenAICompatProvider):
             "model": self.model,
             "messages": self._build_messages(images, system, user),
             "temperature": self.settings.temperature,
-            "max_tokens": self.settings.max_tokens,
+            "max_tokens": self.max_tokens,
         }  # 百炼部分模型不接受 response_format，这里不传，靠 prompt 约束 JSON
         data = self._post(f"{self.base_url}/chat/completions",
                           {"Authorization": f"Bearer {self.api_key}",
@@ -212,7 +212,7 @@ class SiliconFlowProvider(OpenAICompatProvider):
             "model": self.model,
             "messages": self._build_messages(images, system, user),
             "temperature": self.settings.temperature,
-            "max_tokens": self.settings.max_tokens,
+            "max_tokens": self.max_tokens,
         }
         data = self._post(f"{self.base_url}/chat/completions",
                           {"Authorization": f"Bearer {self.api_key}",
