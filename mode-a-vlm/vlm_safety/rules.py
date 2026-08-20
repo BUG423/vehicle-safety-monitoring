@@ -305,9 +305,6 @@ def evaluate_sequence(frames: list[FrameObservation], *, cfg: RuleConfig | None 
     if not has_driver:
         return per_frame, None
 
-    fatigue_hit = perclos.sufficient and (
-        perclos.perclos >= cfg.perclos_threshold or perclos.yawn_ratio >= cfg.yawn_ratio_threshold
-    )
     last = per_frame[-1]
     # 把单帧阶段登记的「疲劳判不了」换成真正的时序结论
     last.undecidable = [u for u in last.undecidable if u.violation is not ViolationType.DRIVER_FATIGUE]
@@ -319,12 +316,31 @@ def evaluate_sequence(frames: list[FrameObservation], *, cfg: RuleConfig | None 
                                             f"时序样本不足：{perclos.reason}"))
         return per_frame, perclos
 
-    evidence = (f"PERCLOS={perclos.perclos:.2f}（{perclos.closed_frames}/{perclos.valid_frames} 帧闭眼，"
-                f"窗口 {perclos.window_s:.1f}s），哈欠帧占比 {perclos.yawn_ratio:.2f}")
-    last.detections.append(Detection(ViolationType.DRIVER_FATIGUE, fatigue_hit,
-                                     min(0.95, 0.5 + perclos.perclos / 2), "driver",
-                                     SubjectRole.DRIVER, evidence, source="fusion",
-                                     frame_index=frames[-1].frame_index, ts=frames[-1].ts))
+    # 疲劳判定**逐帧**下发给确认器，而不是把整段窗口打包成一条聚合结论。
+    #
+    # 这一点踩过坑：最早的实现把 PERCLOS 算完只在最后一帧产出一条 Detection，
+    # 结果 ViolationConfirmer 只收到 1 个样本，duration 恒为 0，永远达不到
+    # min_duration_s，疲劳事件一条也发不出来。
+    #
+    # 正确做法是让契约层的滑窗投票自己去积累时间：逐帧喂「本帧是否闭眼」，
+    # 由 window_s / hit_ratio / min_duration_s 决定何时确认。这样模式A 与
+    # 模式B/C 用的是同一套确认口径，三条路线的告警延迟才可比。
+    # PERCLOS 则退居为**证据与诊断量**，写进事件的 raw_signals 供后台复核。
+    evidence_tpl = (f"PERCLOS={perclos.perclos:.2f}（{perclos.closed_frames}/{perclos.valid_frames} "
+                    f"帧闭眼，窗口 {perclos.window_s:.1f}s），哈欠帧占比 {perclos.yawn_ratio:.2f}")
+    for frame, out in zip(frames, per_frame):
+        occ = frame.by_seat(seat_key := "driver")
+        if occ is None:
+            continue
+        eyes = occ.attr("eyes")
+        if eyes.state not in ("open", "closed", "partially_closed"):
+            continue        # 看不清就不投票，避免把「不确定」稀释成「正常」
+        hit = eyes.state in ("closed", "partially_closed")
+        out.detections.append(Detection(
+            ViolationType.DRIVER_FATIGUE, hit,
+            min(0.95, max(0.5, eyes.confidence)), seat_key, SubjectRole.DRIVER,
+            f"本帧眼睛={eyes.state}；{eyes.evidence}；窗口统计 {evidence_tpl}",
+            source="fusion", frame_index=frame.frame_index, ts=frame.ts))
     return per_frame, perclos
 
 
