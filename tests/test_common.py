@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from common import (  # noqa: E402
     AlertDispatcher,
+    Decision,
     BackendChannel,
     DetectionMode,
     Evidence,
@@ -302,6 +303,48 @@ def test_落盘超限时优先丢弃低等级事件(tmp_path):
     assert len(files) <= 20, "落盘必须受上限约束"
     ranks = [int(f.stem.split("_")[1]) for f in files]
     assert ranks.count(2) > ranks.count(0), "CRITICAL 应优先于 INFO 被保留"
+
+
+def test_判不了的事件不打扰驾驶员但必须上报后台():
+    """安全检查里「判不了」和「合规」绝不能混同。
+
+    发车前因遮挡判不了安全带时，若后台只是「没收到事件」，会被当成「检查通过」放行——
+    这是最危险的失败模式。所以它要上报，只是不播报（对司机没有可执行动作）。
+    """
+    prompts, backend = [], []
+    d = AlertDispatcher([
+        InCabinChannel(sink=prompts.append),
+        BackendChannel(sender=lambda e: (backend.append(e) or True)),
+    ])
+    undecidable = SafetyEvent(
+        violation=ViolationType.DRIVER_NO_SEATBELT, vehicle_id="V1", mode=DetectionMode.VLM,
+        decision=Decision.UNDECIDABLE, undecidable_reason="肩部被遮挡")
+    confirmed = SafetyEvent(violation=ViolationType.DRIVER_NO_SEATBELT,
+                            vehicle_id="V1", mode=DetectionMode.VLM)
+    assert all(d.dispatch(undecidable).values())
+    assert all(d.dispatch(confirmed).values())
+    time.sleep(1.0)
+    d.close()
+    assert len(prompts) == 1, "只有确认违规才播报"
+    assert len(backend) == 2, "判不了也必须让后台知道"
+
+
+def test_判不了的事件消息说明原因():
+    e = SafetyEvent(violation=ViolationType.DRIVER_FATIGUE, vehicle_id="V1", mode=DetectionMode.VLM,
+                    decision=Decision.UNDECIDABLE, undecidable_reason="单帧无法给出 PERCLOS")
+    assert "无法判定" in e.message and "PERCLOS" in e.message
+    assert SafetyEvent.from_dict(e.to_dict()).decision is Decision.UNDECIDABLE
+
+
+def test_默认是确认违规():
+    e = SafetyEvent(violation=ViolationType.DRIVER_FATIGUE, vehicle_id="V1", mode=DetectionMode.EDGE)
+    assert e.decision is Decision.CONFIRMED
+
+
+def test_混合部署模式可表达():
+    """边缘初筛 + 云端复核是最可能的最终形态，事件需要能标识它。"""
+    e = SafetyEvent(violation=ViolationType.DRIVER_PHONE_USE, vehicle_id="V1", mode="hybrid")
+    assert e.mode is DetectionMode.HYBRID
 
 
 def test_告警失败不会中断检测主循环():

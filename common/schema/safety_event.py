@@ -16,11 +16,11 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 try:  # 允许以包方式或独立文件方式引入
-    from .violation_types import DetectionMode, Severity, SubjectRole, ViolationType
+    from .violation_types import Decision, DetectionMode, Severity, SubjectRole, ViolationType
 except ImportError:  # pragma: no cover
-    from violation_types import DetectionMode, Severity, SubjectRole, ViolationType
+    from violation_types import Decision, DetectionMode, Severity, SubjectRole, ViolationType
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 SEAT_LABELS_ZH: dict[str, str] = {
     "driver": "主驾",
@@ -51,6 +51,10 @@ class Evidence:
     bbox: list[float] | None = None    # [x1, y1, x2, y2] 归一化坐标
     captured_at: float | None = None   # 证据帧的采集时间戳
     model_version: str | None = None   # 产出该判定的模型标识，灰度期用于把误报归因到具体版本
+    evidence_text: str | None = None
+    """模型给出的文字依据（如「肩部可见浅色斜跨织带」）。
+
+    可结构化查询，且不含影像——是隐私友好的复核方式：管理者读文字即可复核，无需调阅车内录像。"""
 
 
 @dataclass
@@ -70,6 +74,8 @@ class SafetyEvent:
     evidence: Evidence = field(default_factory=Evidence)
     raw_signals: dict[str, Any] = field(default_factory=dict)  # PERCLOS、车速、VLM 原文等
     message: str = ""                                      # 面向人的中文描述
+    decision: Decision = Decision.CONFIRMED                # 确认违规 / 判不了
+    undecidable_reason: str | None = None                  # decision 为 UNDECIDABLE 时说明原因
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -81,6 +87,8 @@ class SafetyEvent:
             self.severity = Severity(self.severity)
         if isinstance(self.mode, str):
             self.mode = DetectionMode(self.mode)
+        if isinstance(self.decision, str):
+            self.decision = Decision(self.decision)
         if self.subject.role is SubjectRole.UNKNOWN:
             self.subject.role = self.violation.default_role
         if not self.message:
@@ -89,6 +97,9 @@ class SafetyEvent:
     def _default_message(self) -> str:
         seat_zh = SEAT_LABELS_ZH.get(self.subject.seat or "", self.subject.seat or "")
         seat = f"（{seat_zh}）" if seat_zh else ""
+        if self.decision is Decision.UNDECIDABLE:
+            why = f"：{self.undecidable_reason}" if self.undecidable_reason else ""
+            return f"{self.violation.label_zh}{seat} 无法判定{why}"
         dur = f"，持续 {self.duration_s:.1f} 秒" if self.duration_s >= 1 else ""
         return f"{self.violation.label_zh}{seat}{dur}"
 
@@ -98,6 +109,7 @@ class SafetyEvent:
         d["violation"] = self.violation.value
         d["severity"] = self.severity.value
         d["mode"] = self.mode.value
+        d["decision"] = self.decision.value
         d["subject"]["role"] = self.subject.role.value
         return d
 
@@ -135,6 +147,7 @@ class VehicleContext:
     engine_on: bool | None = None
     gps: tuple[float, float] | None = None
     seatbelt_switch: dict[str, bool] = field(default_factory=dict)  # 座位 -> 是否扣合（车身总线信号）
+    seat_capacity: int | None = None   # 核定载客数，超员判定的统一口径（来自行驶证，非视觉推断）
     ts: float = field(default_factory=time.time)
 
     @property

@@ -22,12 +22,12 @@ from typing import Callable, Iterable
 
 try:
     from ..schema.safety_event import SafetyEvent
-    from ..schema.violation_types import Severity, ViolationType
+    from ..schema.violation_types import Decision, Severity, ViolationType
 except ImportError:  # pragma: no cover - 独立运行
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "schema"))
     from safety_event import SafetyEvent
-    from violation_types import Severity, ViolationType
+    from violation_types import Decision, Severity, ViolationType
 
 
 class AlertChannel(ABC):
@@ -103,6 +103,10 @@ class InCabinChannel(AlertChannel):
         return action or event.message
 
     def send(self, event: SafetyEvent) -> bool:
+        if event.decision is Decision.UNDECIDABLE:
+            # 「判不了」对驾驶员没有可执行动作，播报只会制造噪声；
+            # 但它仍会经后台通道上报，避免被后台读成「检查通过」。
+            return True
         if event.severity.rank < self._min.rank:
             return True  # 低于阈值不打扰驾驶员，但不算失败
         try:

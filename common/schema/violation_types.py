@@ -29,6 +29,18 @@ class Severity(str, Enum):
         return {"info": 0, "warn": 1, "critical": 2}[self.value]
 
 
+class Decision(str, Enum):
+    """一条记录表达的是「确认违规」还是「判不了」。
+
+    安全检查里这两者绝不能混同：发车前因遮挡判不了安全带时，如果后台只是「没收到事件」，
+    会被当成「检查通过」放行——这是最危险的失败模式。
+    因此「判不了」也要作为一条记录上报，只是不打扰驾驶员（对司机没有可执行动作）。
+    """
+
+    CONFIRMED = "confirmed"        # 确认违规
+    UNDECIDABLE = "undecidable"    # 无法判定：遮挡、光线不足、目标未入镜、需时序而样本不足
+
+
 class ViolationType(str, Enum):
     """违规类型。
 
@@ -49,6 +61,7 @@ class ViolationType(str, Enum):
     PASSENGER_NO_SEATBELT = "passenger.no_seatbelt"      # 乘客未系安全带
     PASSENGER_OVERLOAD = "passenger.overload"            # 超员
     PASSENGER_CHILD_FRONT_SEAT = "passenger.child_front_seat"  # 儿童坐副驾
+    PASSENGER_SMOKING = "passenger.smoking"              # 乘客抽烟
 
     # ---- 车辆状态类（依赖 OBD/GPS 信号，非纯视觉） ----
     VEHICLE_SPEEDING = "vehicle.speeding"                # 超速
@@ -87,6 +100,7 @@ _LABELS_ZH: dict[ViolationType, str] = {
     ViolationType.PASSENGER_NO_SEATBELT: "乘客未系安全带",
     ViolationType.PASSENGER_OVERLOAD: "车辆超员",
     ViolationType.PASSENGER_CHILD_FRONT_SEAT: "儿童乘坐副驾",
+    ViolationType.PASSENGER_SMOKING: "乘客吸烟",
     ViolationType.VEHICLE_SPEEDING: "车辆超速",
     ViolationType.VEHICLE_HARSH_DRIVING: "急加速/急刹车",
     ViolationType.SYSTEM_CAMERA_BLOCKED: "摄像头异常",
@@ -104,6 +118,7 @@ _DEFAULT_SEVERITY: dict[ViolationType, Severity] = {
     ViolationType.PASSENGER_NO_SEATBELT: Severity.WARN,
     ViolationType.PASSENGER_OVERLOAD: Severity.WARN,
     ViolationType.PASSENGER_CHILD_FRONT_SEAT: Severity.WARN,
+    ViolationType.PASSENGER_SMOKING: Severity.INFO,
     ViolationType.VEHICLE_SPEEDING: Severity.CRITICAL,
     ViolationType.VEHICLE_HARSH_DRIVING: Severity.WARN,
     ViolationType.SYSTEM_CAMERA_BLOCKED: Severity.WARN,
@@ -116,3 +131,4 @@ class DetectionMode(str, Enum):
     VLM = "mode_a_vlm"          # 模式A：大模型直接理解图片
     SERVER = "mode_b_server"    # 模式B：后台服务器实时监测汇总
     EDGE = "mode_c_edge"        # 模式C：车载嵌入式设备
+    HYBRID = "hybrid"           # 混合部署：边缘初筛 + 云端复核（最可能的最终形态）
