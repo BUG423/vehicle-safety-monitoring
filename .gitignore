@@ -27,3 +27,10 @@ models/weights/
 secrets/
 *_key.txt
 *apikey*
+
+# 模式A：测试素材不入库
+# testdata 由 mode-a-vlm/scripts/gen_test_images.py 一秒生成；
+# evalset/images 是 Wikimedia Commons 的第三方署名图片，只存 manifest，用 fetch_evalset.py 拉取。
+mode-a-vlm/testdata/
+mode-a-vlm/evalset/images/
+mode-a-vlm/evalset/results.json

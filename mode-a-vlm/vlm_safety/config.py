@@ -39,7 +39,7 @@ class Settings:
     """一次运行的全部可调参数。"""
 
     # ---- VLM 后端 ----
-    provider: str = "mock"           # mock | anthropic | openai | dashscope | local
+    provider: str = "auto"           # auto | mock | siliconflow | anthropic | openai | dashscope | local
     model: str = ""                  # 留空则由各 provider 用自己的默认模型
     temperature: float = 0.0         # 结构化抽取任务固定用 0，降低幻觉与不稳定
     max_tokens: int = 1200
@@ -54,6 +54,9 @@ class Settings:
     openai_base_url: str = "https://api.openai.com/v1"
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    siliconflow_api_key: str = ""
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    siliconflow_model: str = "Qwen/Qwen3-VL-8B-Instruct"
     local_model_path: str = ""       # 本地权重目录或 HF repo id
     local_device: str = "cuda:0"
     local_dtype: str = "bfloat16"
@@ -81,13 +84,32 @@ class Settings:
 
     @property
     def has_cloud_key(self) -> bool:
-        return bool(self.anthropic_api_key or self.openai_api_key or self.dashscope_api_key)
+        return bool(self.anthropic_api_key or self.openai_api_key
+                    or self.dashscope_api_key or self.siliconflow_api_key)
+
+    def resolve_provider(self) -> str:
+        """``provider=auto`` 时按「哪个后端有凭据」自动选择。
+
+        选择结果会出现在 /health 和每条事件的 raw_signals 里，
+        不存在「以为在用真模型、其实跑的是 mock」这种情况。
+        """
+        if self.provider != "auto":
+            return self.provider
+        if self.siliconflow_api_key:
+            return "siliconflow"
+        if self.anthropic_api_key:
+            return "anthropic"
+        if self.dashscope_api_key:
+            return "dashscope"
+        if self.openai_api_key:
+            return "openai"
+        return "mock"
 
 
 def load_settings(**overrides) -> Settings:
     """从环境变量构造 Settings，再用关键字参数覆盖。"""
     s = Settings(
-        provider=_env("VSM_VLM_PROVIDER", "mock").lower() or "mock",
+        provider=_env("VSM_VLM_PROVIDER", "auto").lower() or "auto",
         model=_env("VSM_VLM_MODEL"),
         temperature=_env_float("VSM_VLM_TEMPERATURE", 0.0),
         max_tokens=_env_int("VSM_VLM_MAX_TOKENS", 1200),
@@ -100,6 +122,9 @@ def load_settings(**overrides) -> Settings:
         dashscope_api_key=_env("DASHSCOPE_API_KEY"),
         dashscope_base_url=_env("DASHSCOPE_BASE_URL",
                                 "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        siliconflow_api_key=_env("SILICONFLOW_API_KEY"),
+        siliconflow_base_url=_env("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1"),
+        siliconflow_model=_env("SILICONFLOW_VL_MODEL", "Qwen/Qwen3-VL-8B-Instruct"),
         local_model_path=_env("VSM_LOCAL_MODEL_PATH"),
         local_device=_env("VSM_LOCAL_DEVICE", "cuda:0"),
         local_dtype=_env("VSM_LOCAL_DTYPE", "bfloat16"),

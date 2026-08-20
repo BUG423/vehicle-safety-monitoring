@@ -182,3 +182,51 @@ class DashScopeProvider(OpenAICompatProvider):
                            prompt_tokens=usage.get("prompt_tokens"),
                            completion_tokens=usage.get("completion_tokens"),
                            raw={"finish_reason": choice.get("finish_reason")})
+
+
+class SiliconFlowProvider(OpenAICompatProvider):
+    """硅基流动（SiliconFlow）—— 本项目实测使用的云端后端。
+
+    同样是 OpenAI 兼容协议，聚合了 Qwen3-VL 系列、GLM-4.5V 等国产开源视觉模型，
+    按 token 计费、无需自建推理集群。对车队项目的现实意义：
+    数据留在境内、模型可换、单价远低于闭源旗舰模型。
+
+    模型名通过 ``SILICONFLOW_VL_MODEL`` 配置，便于横向对比不同规模/是否 Thinking 的表现。
+    """
+
+    name = "siliconflow"
+    api_key_attr = "siliconflow_api_key"
+    key_env_name = "SILICONFLOW_API_KEY"
+
+    @property
+    def default_model(self) -> str:
+        return self.settings.siliconflow_model or "Qwen/Qwen3-VL-8B-Instruct"
+
+    @property
+    def base_url(self) -> str:
+        return self.settings.siliconflow_base_url.rstrip("/")
+
+    def _invoke(self, images, system, user) -> VLMResponse:
+        self._require_key()
+        body = {
+            "model": self.model,
+            "messages": self._build_messages(images, system, user),
+            "temperature": self.settings.temperature,
+            "max_tokens": self.settings.max_tokens,
+        }
+        data = self._post(f"{self.base_url}/chat/completions",
+                          {"Authorization": f"Bearer {self.api_key}",
+                           "Content-Type": "application/json"}, body)
+        choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        text = msg.get("content") or ""
+        if isinstance(text, list):
+            text = "".join(seg.get("text", "") for seg in text if isinstance(seg, dict))
+        # Thinking 系模型把推理过程放在 reasoning_content，正文仍在 content；
+        # 只取正文，思维链不参与解析（也不落库，避免把模型的自言自语当证据）。
+        usage = data.get("usage", {})
+        return VLMResponse(text=text, provider=self.name, model=self.model,
+                           prompt_tokens=usage.get("prompt_tokens"),
+                           completion_tokens=usage.get("completion_tokens"),
+                           raw={"finish_reason": choice.get("finish_reason"),
+                                "has_reasoning": bool(msg.get("reasoning_content"))})
