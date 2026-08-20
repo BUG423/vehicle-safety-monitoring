@@ -22,12 +22,12 @@ from typing import Callable, Iterable
 
 try:
     from ..schema.safety_event import SafetyEvent
-    from ..schema.violation_types import Severity
+    from ..schema.violation_types import Severity, ViolationType
 except ImportError:  # pragma: no cover - 独立运行
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "schema"))
     from safety_event import SafetyEvent
-    from violation_types import Severity
+    from violation_types import Severity, ViolationType
 
 
 class AlertChannel(ABC):
@@ -90,16 +90,15 @@ class InCabinChannel(AlertChannel):
     @staticmethod
     def _speech_text(event: SafetyEvent) -> str:
         """播报语要短、要给出可执行动作 —— 行车中司机没有阅读长句的余裕。"""
-        from violation_types import ViolationType as VT  # 局部导入避免循环
         action = {
-            VT.DRIVER_NO_SEATBELT: "请系好安全带",
-            VT.PASSENGER_NO_SEATBELT: "请提醒乘客系好安全带",
-            VT.DRIVER_FATIGUE: "检测到疲劳，请就近停车休息",
-            VT.DRIVER_DISTRACTION: "请注意前方道路",
-            VT.DRIVER_PHONE_USE: "行车中请勿使用手机",
-            VT.DRIVER_SMOKING: "车内请勿吸烟",
-            VT.DRIVER_HANDS_OFF_WHEEL: "请双手握好方向盘",
-            VT.VEHICLE_SPEEDING: "您已超速，请减速",
+            ViolationType.DRIVER_NO_SEATBELT: "请系好安全带",
+            ViolationType.PASSENGER_NO_SEATBELT: "请提醒乘客系好安全带",
+            ViolationType.DRIVER_FATIGUE: "检测到疲劳，请就近停车休息",
+            ViolationType.DRIVER_DISTRACTION: "请注意前方道路",
+            ViolationType.DRIVER_PHONE_USE: "行车中请勿使用手机",
+            ViolationType.DRIVER_SMOKING: "车内请勿吸烟",
+            ViolationType.DRIVER_HANDS_OFF_WHEEL: "请双手握好方向盘",
+            ViolationType.VEHICLE_SPEEDING: "您已超速，请减速",
         }.get(event.violation)
         return action or event.message
 
