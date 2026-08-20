@@ -33,4 +33,3 @@ secrets/
 # evalset/images 是 Wikimedia Commons 的第三方署名图片，只存 manifest，用 fetch_evalset.py 拉取。
 mode-a-vlm/testdata/
 mode-a-vlm/evalset/images/
-mode-a-vlm/evalset/results.json

@@ -1,0 +1,1019 @@
+{
+  "manifest": "/workspace/webCodex/vsm-worktrees/mode-a-vlm/mode-a-vlm/evalset/manifest.json",
+  "results": [
+    {
+      "summary": {
+        "model": "Qwen/Qwen3-VL-8B-Instruct",
+        "n": 13,
+        "parse_fail": 2,
+        "latency_ms_avg": 17574.8,
+        "latency_ms_max": 60144.9,
+        "prompt_tokens_avg": 1545,
+        "completion_tokens_avg": 344,
+        "scene": {
+          "错误": 2,
+          "正确": 9,
+          "保守": 2
+        },
+        "scene_正确率": 0.692,
+        "belt": {
+          "正确": 11,
+          "错误": 1,
+          "保守": 1
+        },
+        "belt_正确率": 0.846,
+        "phone": {
+          "正确": 11,
+          "保守": 2
+        },
+        "phone_正确率": 0.846,
+        "wall_seconds": 230.1
+      },
+      "rows": [
+        {
+          "id": "00",
+          "desc": "车外侧拍，绿色轿车内驾驶员单手持手机",
+          "scene": {
+            "pred": "cabin",
+            "truth": "exterior",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 12333.4
+        },
+        {
+          "id": "01",
+          "desc": "车内视角，方向盘上方一只手持翻盖手机，人体未入镜",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 23109.5
+        },
+        {
+          "id": "03",
+          "desc": "特写，双手在方向盘前捧着手机打字",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 15083.2
+        },
+        {
+          "id": "04",
+          "desc": "越界输入：户外广场上一群人在跳舞，与车辆无关",
+          "scene": {
+            "pred": "not_cabin",
+            "truth": "not_cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 8265.3
+        },
+        {
+          "id": "06",
+          "desc": "车内女性正在扣安全带，织带清晰斜跨躯干",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "not_fastened",
+            "truth": "fastened",
+            "verdict": "错误"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.no_seatbelt"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 9143.6
+        },
+        {
+          "id": "07",
+          "desc": "驾驶位少年系安全带，黑色织带从右肩斜跨",
+          "scene": {
+            "pred": "unknown",
+            "truth": "cabin",
+            "verdict": "保守"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "fastened",
+            "verdict": "保守"
+          },
+          "phone": {
+            "pred": "unknown",
+            "truth": "no",
+            "verdict": "保守"
+          },
+          "events": [],
+          "parse_ok": false,
+          "vlm_error": "ProxyError: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+          "latency_ms": 16129.9
+        },
+        {
+          "id": "08",
+          "desc": "越界输入：直升机机舱内士兵为儿童系五点式安全带（不是汽车座舱）",
+          "scene": {
+            "pred": "cabin",
+            "truth": "not_cabin",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [
+            "passenger.child_front_seat"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 17934.8
+        },
+        {
+          "id": "09",
+          "desc": "车内前排视角，仅见一只手握方向盘，人体与肩部不在画面内",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 21000.0
+        },
+        {
+          "id": "10",
+          "desc": "车外侧拍整车，驾驶员仅从侧窗露出头部",
+          "scene": {
+            "pred": "unknown",
+            "truth": "exterior",
+            "verdict": "保守"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "unknown",
+            "truth": "no",
+            "verdict": "保守"
+          },
+          "events": [],
+          "parse_ok": false,
+          "vlm_error": "ReadTimeout: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=60.0)",
+          "latency_ms": 60144.9
+        },
+        {
+          "id": "11",
+          "desc": "驾驶位女性侧身微笑，皮夹克与织带同色，人工也难以确认是否系带",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 16520.8
+        },
+        {
+          "id": "12",
+          "desc": "透过前挡拍摄驾驶位女性，肩部裸露清晰可见，无任何织带",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "not_fastened",
+            "truth": "not_fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.no_seatbelt"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 8039.2
+        },
+        {
+          "id": "13",
+          "desc": "客车驾驶员侧面，浅色织带从右肩斜跨至左腰，清晰可见",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 17072.2
+        },
+        {
+          "id": "14",
+          "desc": "越界输入：一页纯文字文档截图",
+          "scene": {
+            "pred": "not_cabin",
+            "truth": "not_cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 3695.4
+        }
+      ]
+    },
+    {
+      "summary": {
+        "model": "Qwen/Qwen3-VL-32B-Instruct",
+        "n": 13,
+        "parse_fail": 0,
+        "latency_ms_avg": 24454.9,
+        "latency_ms_max": 54633.9,
+        "prompt_tokens_avg": 1545,
+        "completion_tokens_avg": 411,
+        "scene": {
+          "错误": 2,
+          "正确": 11
+        },
+        "scene_正确率": 0.846,
+        "belt": {
+          "正确": 11,
+          "过度自信": 1,
+          "保守": 1
+        },
+        "belt_正确率": 0.846,
+        "phone": {
+          "错误": 1,
+          "正确": 12
+        },
+        "phone_正确率": 0.923,
+        "wall_seconds": 319.1
+      },
+      "rows": [
+        {
+          "id": "00",
+          "desc": "车外侧拍，绿色轿车内驾驶员单手持手机",
+          "scene": {
+            "pred": "cabin",
+            "truth": "exterior",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "yes",
+            "verdict": "错误"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 44433.4
+        },
+        {
+          "id": "01",
+          "desc": "车内视角，方向盘上方一只手持翻盖手机，人体未入镜",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 16716.9
+        },
+        {
+          "id": "03",
+          "desc": "特写，双手在方向盘前捧着手机打字",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 14462.0
+        },
+        {
+          "id": "04",
+          "desc": "越界输入：户外广场上一群人在跳舞，与车辆无关",
+          "scene": {
+            "pred": "not_cabin",
+            "truth": "not_cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 3952.9
+        },
+        {
+          "id": "06",
+          "desc": "车内女性正在扣安全带，织带清晰斜跨躯干",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 30236.7
+        },
+        {
+          "id": "07",
+          "desc": "驾驶位少年系安全带，黑色织带从右肩斜跨",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 17205.8
+        },
+        {
+          "id": "08",
+          "desc": "越界输入：直升机机舱内士兵为儿童系五点式安全带（不是汽车座舱）",
+          "scene": {
+            "pred": "cabin",
+            "truth": "not_cabin",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "undecidable",
+            "verdict": "过度自信"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 54633.9
+        },
+        {
+          "id": "09",
+          "desc": "车内前排视角，仅见一只手握方向盘，人体与肩部不在画面内",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 22704.6
+        },
+        {
+          "id": "10",
+          "desc": "车外侧拍整车，驾驶员仅从侧窗露出头部",
+          "scene": {
+            "pred": "exterior",
+            "truth": "exterior",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 29743.4
+        },
+        {
+          "id": "11",
+          "desc": "驾驶位女性侧身微笑，皮夹克与织带同色，人工也难以确认是否系带",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 21402.4
+        },
+        {
+          "id": "12",
+          "desc": "透过前挡拍摄驾驶位女性，肩部裸露清晰可见，无任何织带",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "not_fastened",
+            "verdict": "保守"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 11533.1
+        },
+        {
+          "id": "13",
+          "desc": "客车驾驶员侧面，浅色织带从右肩斜跨至左腰，清晰可见",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 48269.2
+        },
+        {
+          "id": "14",
+          "desc": "越界输入：一页纯文字文档截图",
+          "scene": {
+            "pred": "not_cabin",
+            "truth": "not_cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 2619.8
+        }
+      ]
+    },
+    {
+      "summary": {
+        "model": "zai-org/GLM-4.5V",
+        "n": 13,
+        "parse_fail": 2,
+        "latency_ms_avg": 21150.3,
+        "latency_ms_max": 60149.9,
+        "prompt_tokens_avg": 1679,
+        "completion_tokens_avg": 957,
+        "scene": {
+          "错误": 3,
+          "正确": 8,
+          "保守": 2
+        },
+        "scene_正确率": 0.615,
+        "belt": {
+          "过度自信": 3,
+          "正确": 9,
+          "保守": 1
+        },
+        "belt_正确率": 0.692,
+        "phone": {
+          "正确": 11,
+          "保守": 2
+        },
+        "phone_正确率": 0.846,
+        "wall_seconds": 276.0
+      },
+      "rows": [
+        {
+          "id": "00",
+          "desc": "车外侧拍，绿色轿车内驾驶员单手持手机",
+          "scene": {
+            "pred": "cabin",
+            "truth": "exterior",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "not_fastened",
+            "truth": "undecidable",
+            "verdict": "过度自信"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.no_seatbelt",
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 19402.1
+        },
+        {
+          "id": "01",
+          "desc": "车内视角，方向盘上方一只手持翻盖手机，人体未入镜",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 13810.2
+        },
+        {
+          "id": "03",
+          "desc": "特写，双手在方向盘前捧着手机打字",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "yes",
+            "truth": "yes",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.phone_use"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 7677.0
+        },
+        {
+          "id": "04",
+          "desc": "越界输入：户外广场上一群人在跳舞，与车辆无关",
+          "scene": {
+            "pred": "not_cabin",
+            "truth": "not_cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 2495.8
+        },
+        {
+          "id": "06",
+          "desc": "车内女性正在扣安全带，织带清晰斜跨躯干",
+          "scene": {
+            "pred": "unknown",
+            "truth": "cabin",
+            "verdict": "保守"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "fastened",
+            "verdict": "保守"
+          },
+          "phone": {
+            "pred": "unknown",
+            "truth": "no",
+            "verdict": "保守"
+          },
+          "events": [],
+          "parse_ok": false,
+          "vlm_error": "ReadTimeout: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=60.0)",
+          "latency_ms": 60149.9
+        },
+        {
+          "id": "07",
+          "desc": "驾驶位少年系安全带，黑色织带从右肩斜跨",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 16316.2
+        },
+        {
+          "id": "08",
+          "desc": "越界输入：直升机机舱内士兵为儿童系五点式安全带（不是汽车座舱）",
+          "scene": {
+            "pred": "cabin",
+            "truth": "not_cabin",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "undecidable",
+            "verdict": "过度自信"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 33459.9
+        },
+        {
+          "id": "09",
+          "desc": "车内前排视角，仅见一只手握方向盘，人体与肩部不在画面内",
+          "scene": {
+            "pred": "unknown",
+            "truth": "cabin",
+            "verdict": "保守"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "unknown",
+            "truth": "no",
+            "verdict": "保守"
+          },
+          "events": [],
+          "parse_ok": false,
+          "vlm_error": "ReadTimeout: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=60.0)",
+          "latency_ms": 60138.3
+        },
+        {
+          "id": "10",
+          "desc": "车外侧拍整车，驾驶员仅从侧窗露出头部",
+          "scene": {
+            "pred": "cabin",
+            "truth": "exterior",
+            "verdict": "错误"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 26242.5
+        },
+        {
+          "id": "11",
+          "desc": "驾驶位女性侧身微笑，皮夹克与织带同色，人工也难以确认是否系带",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "undecidable",
+            "verdict": "过度自信"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 9517.2
+        },
+        {
+          "id": "12",
+          "desc": "透过前挡拍摄驾驶位女性，肩部裸露清晰可见，无任何织带",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "not_fastened",
+            "truth": "not_fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [
+            "driver.no_seatbelt"
+          ],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 10602.6
+        },
+        {
+          "id": "13",
+          "desc": "客车驾驶员侧面，浅色织带从右肩斜跨至左腰，清晰可见",
+          "scene": {
+            "pred": "cabin",
+            "truth": "cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "fastened",
+            "truth": "fastened",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 12697.6
+        },
+        {
+          "id": "14",
+          "desc": "越界输入：一页纯文字文档截图",
+          "scene": {
+            "pred": "not_cabin",
+            "truth": "not_cabin",
+            "verdict": "正确"
+          },
+          "belt": {
+            "pred": "unknown",
+            "truth": "undecidable",
+            "verdict": "正确"
+          },
+          "phone": {
+            "pred": "no",
+            "truth": "no",
+            "verdict": "正确"
+          },
+          "events": [],
+          "parse_ok": true,
+          "vlm_error": null,
+          "latency_ms": 2444.8
+        }
+      ]
+    }
+  ]
+}
