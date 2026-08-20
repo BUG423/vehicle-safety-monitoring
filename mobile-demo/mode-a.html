@@ -119,7 +119,7 @@ footer{text-align:center;font-size:11.5px;color:var(--t3);padding:2px 8px 0;line
     <p class="sub">发车前拍一张车内照片，视觉大模型抽取结构化观测，规则层判定违规，车内提醒 + 后台上报双通道告警。</p>
     <div class="row" style="margin-top:11px">
       <span class="pill sim">本页 VLM 推理为模拟</span>
-      <span class="pill">事件结构 SafetyEvent v1.1</span>
+      <span class="pill">事件结构 SafetyEvent v1.2</span>
       <span class="pill">mode_a_vlm</span>
     </div>
   </header>
@@ -491,7 +491,7 @@ const STEPS = [
   ["3","VLM 抽取视觉属性","<b>本页为预置数据</b>；真实链路调云端 Qwen3-VL，只描述可见事实、不下违规结论",0],
   ["4","枚举白名单校验","越界值与无依据的结论降级为 unknown",1],
   ["5","规则层判定违规","与 rules.py 同口径的确定性规则，可审计可调阈值",1],
-  ["6","事件构造","SafetyEvent v1.1，mode=mode_a_vlm，三条路线同一结构",1],
+  ["6","事件构造","SafetyEvent v1.2，mode=mode_a_vlm，三条路线同一结构",1],
   ["7","车内提醒","按等级分级：横幅 + navigator.vibrate 震动",1],
   ["8","后台上报","流水记录；真实链路走 Webhook，断网落盘补传",0]
 ];
