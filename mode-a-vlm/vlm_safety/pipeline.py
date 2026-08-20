@@ -197,7 +197,8 @@ class SafetyPipeline:
         if result.policy == "instant":
             events = self._events_instant(per_frame, vid, thumb, parsed, vlm, timestamps[-1])
         else:
-            events = self._events_temporal(per_frame, vid, thumb, parsed, vlm, result.perclos)
+            events = self._events_temporal(per_frame, vid, thumb, parsed, vlm, result.perclos,
+                                           speed_kmh=vehicle_ctx.speed_kmh if vehicle_ctx else None)
         result.events = events
 
         # --- 6. 双通道告警 ---
@@ -241,7 +242,10 @@ class SafetyPipeline:
             subject=Subject(role=det.role, seat=seat),
             confidence=round(confidence if confidence is not None else det.confidence, 4),
             duration_s=duration_s,
-            evidence=Evidence(frame_b64=thumb, captured_at=det.ts or time.time()),
+            evidence=Evidence(frame_b64=thumb, captured_at=det.ts or time.time(),
+                              # schema 1.1：把具体模型标识写进证据，
+                              # 多模型灰度时才能把误报归因到某个模型版本
+                              model_version=f"{vlm.provider}:{vlm.model}"),
             raw_signals=raw,
             ts=det.ts or time.time(),
         )
@@ -264,13 +268,20 @@ class SafetyPipeline:
         return events
 
     def _events_temporal(self, per_frame, vehicle_id, thumb, parsed, vlm,
-                         perclos: PerclosResult | None) -> list[SafetyEvent]:
-        """序列复核：逐帧喂给契约层的确认器，只有确认通过才出事件。"""
+                         perclos: PerclosResult | None,
+                         speed_kmh: float | None = None) -> list[SafetyEvent]:
+        """序列复核：逐帧喂给契约层的确认器，只有确认通过才出事件。
+
+        ``speed_kmh`` 透传给确认器的车速门控（契约层 schema 1.1）：
+        静止时分心/看手机不成立；车速未知时不门控，避免缺信号导致漏报。
+        安全带类刻意不受门控 —— 发车前静止检查正是模式A 的主场景。
+        """
         events: list[SafetyEvent] = []
         for out in per_frame:
             for det in out.detections:
                 c = self.confirmer.update(det.violation, det.hit, confidence=det.confidence,
-                                          key=det.key, now=det.ts or time.time())
+                                          key=det.key, now=det.ts or time.time(),
+                                          speed_kmh=speed_kmh)
                 if not c.should_alert:
                     continue
                 extra = {"confirm_window_ratio": c.confidence,
