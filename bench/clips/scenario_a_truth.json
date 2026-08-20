@@ -1,0 +1,70 @@
+{
+  "clip": "scenario_a.mp4",
+  "fps": 15,
+  "duration_s": 55.0,
+  "segments": [
+    {
+      "violation": "driver.no_seatbelt",
+      "start_s": 2.0,
+      "end_s": 14.0
+    },
+    {
+      "violation": "driver.fatigue",
+      "start_s": 20.0,
+      "end_s": 34.0
+    },
+    {
+      "violation": "driver.phone_use",
+      "start_s": 40.0,
+      "end_s": 48.0
+    },
+    {
+      "violation": "passenger.no_seatbelt",
+      "start_s": 6.0,
+      "end_s": 52.0
+    }
+  ],
+  "distractors": {
+    "blinks": [
+      [
+        5.0,
+        5.2
+      ],
+      [
+        9.5,
+        9.65
+      ],
+      [
+        16.0,
+        16.2
+      ],
+      [
+        25.5,
+        25.6
+      ],
+      [
+        37.0,
+        37.15
+      ],
+      [
+        50.0,
+        50.2
+      ]
+    ],
+    "glances": [
+      [
+        11.0,
+        11.6
+      ],
+      [
+        30.0,
+        30.5
+      ],
+      [
+        44.0,
+        44.7
+      ]
+    ]
+  },
+  "note": "合成素材，用于评测告警链路与时序逻辑，不用于评测感知模型的真实精度。"
+}
