@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f5f7">
+<title>模式B · 车队级实时监管</title>
+<style>
+:root{
+  --bg1:#eef1f6; --bg2:#f7f4f0;
+  --glass:rgba(255,255,255,.62); --glass-2:rgba(255,255,255,.42);
+  --line:rgba(255,255,255,.55); --hair:rgba(0,0,0,.07);
+  --text:#1d1d1f; --muted:#6e6e73; --faint:#8e8e93;
+  --crit:#ff3b30; --warn:#ff9f0a; --info:#0a84ff; --ok:#30d158; --violet:#5e5ce6;
+  --r:20px; --shadow:0 10px 34px rgba(30,40,60,.10);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg1:#0b0b0d; --bg2:#141418;
+    --glass:rgba(30,30,34,.60); --glass-2:rgba(56,56,62,.40);
+    --line:rgba(255,255,255,.13); --hair:rgba(255,255,255,.09);
+    --text:#f5f5f7; --muted:#a1a1a6; --faint:#8e8e93;
+    --shadow:0 10px 34px rgba(0,0,0,.42);
+  }
+  html{color-scheme:dark}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg1); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  padding:0 14px calc(30px + env(safe-area-inset-bottom));
+  max-width:600px; margin:0 auto; overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:-20%;z-index:-1;
+  background:
+    radial-gradient(46vmax 46vmax at 14% 6%, rgba(10,132,255,.20), transparent 60%),
+    radial-gradient(40vmax 40vmax at 92% 12%, rgba(255,159,10,.17), transparent 58%),
+    radial-gradient(48vmax 48vmax at 50% 96%, rgba(94,92,230,.16), transparent 62%),
+    linear-gradient(160deg,var(--bg1),var(--bg2));
+}
+.glass{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(22px) saturate(180%);
+  backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow);
+}
+header{padding:26px 4px 14px}
+h1{font-size:24px;font-weight:600;letter-spacing:-.024em;margin:0}
+.lede{color:var(--muted);font-size:13.5px;margin:5px 0 0}
+section{padding:16px 17px;margin-bottom:13px}
+h2{font-size:13px;font-weight:600;margin:0 0 12px;display:flex;align-items:center;
+   justify-content:space-between;gap:8px;letter-spacing:.01em}
+h2 .n{font-weight:400;font-size:11.5px;color:var(--faint)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;padding:3px 9px;
+  border-radius:999px;border:1px solid var(--hair);background:var(--glass-2);color:var(--muted);
+  white-space:nowrap}
+.tag.real{color:var(--ok);border-color:rgba(48,209,88,.34);background:rgba(48,209,88,.10)}
+.tag.sim{color:var(--violet);border-color:rgba(94,92,230,.34);background:rgba(94,92,230,.10)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:13px}
+.kpi{padding:12px 8px;text-align:center}
+.kpi .v{font-size:22px;font-weight:600;letter-spacing:-.03em;line-height:1.1}
+.kpi .k{font-size:10px;color:var(--muted);margin-top:3px}
+
+/* 摄像头 */
+.stage{position:relative;border-radius:15px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.stage video,.stage canvas{width:100%;height:100%;object-fit:cover;display:block}
+.stage .hud{position:absolute;left:9px;bottom:9px;right:9px;display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:10px;padding:3px 8px;border-radius:999px;color:#fff;
+  background:rgba(0,0,0,.42);-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px)}
+.controls{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+button{font:inherit;font-size:12.5px;padding:8px 13px;border-radius:12px;cursor:pointer;
+  border:1px solid var(--line);background:var(--glass-2);color:var(--text);
+  -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);transition:transform .1s ease}
+button:active{transform:scale(.96)}
+button.p{background:var(--info);color:#fff;border-color:transparent}
+button.on{background:var(--crit);color:#fff;border-color:transparent}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px}
+.metric{padding:9px;border-radius:13px;background:var(--glass-2);border:1px solid var(--hair);text-align:center}
+.metric b{display:block;font-size:15px;font-weight:600;letter-spacing:-.02em}
+.metric span{font-size:10px;color:var(--muted)}
+
+/* 车内横幅 */
+#cabin{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:80;
+  border-radius:17px;padding:15px 17px;color:#fff;display:none;box-shadow:0 14px 38px rgba(0,0,0,.30);
+  -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px)}
+#cabin.on{display:block;animation:drop .34s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes drop{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
+#cabin .t{font-size:17px;font-weight:600;letter-spacing:-.01em}
+#cabin .s{font-size:11.5px;opacity:.9;margin-top:3px}
+
+/* 车队 */
+.fleet{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.v{padding:11px 12px;border-radius:14px;background:var(--glass-2);border:1px solid var(--hair)}
+.v .p{font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.v .d{font-size:10.5px;color:var(--muted);margin-top:2px}
+.v .st{font-size:10px;margin-top:7px;min-height:15px;color:var(--crit)}
+.v .st.ok{color:var(--ok)}
+
+/* 告警流 */
+.stream{display:flex;flex-direction:column;gap:8px;max-height:330px;overflow-y:auto;
+  -webkit-overflow-scrolling:touch}
+.ev{display:flex;gap:10px;align-items:center;padding:10px 11px;border-radius:14px;
+  background:var(--glass-2);border:1px solid var(--hair);cursor:pointer}
+.ev.new{animation:in .4s ease}
+@keyframes in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.ev .bar{width:3px;align-self:stretch;border-radius:2px;background:var(--info);flex:none}
+.ev .bar.critical{background:var(--crit)} .ev .bar.warn{background:var(--warn)}
+.ev .body{flex:1;min-width:0}
+.ev .ti{font-size:13px;font-weight:600}
+.ev .mt{font-size:10.5px;color:var(--muted);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev .rt{font-size:10px;color:var(--faint);flex:none}
+
+/* 图表 */
+svg{display:block;width:100%;overflow:visible}
+svg text{font-size:9.5px;fill:var(--muted)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--muted);margin-top:9px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* 通道 */
+.chan{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.chan>div{padding:12px;border-radius:14px;background:var(--glass-2);border:1px solid var(--hair)}
+.chan h3{font-size:12px;margin:0 0 5px;font-weight:600}
+.chan p{font-size:10.5px;color:var(--muted);margin:0;line-height:1.55}
+.chan .c{font-size:19px;font-weight:600;margin-top:7px;letter-spacing:-.02em}
+
+/* 诚实说明 */
+.honest li{font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.6}
+.honest b{color:var(--text);font-weight:600}
+.honest ul{margin:0;padding-left:17px}
+
+/* 详情弹层 */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.36);z-index:90;display:none;
+  align-items:flex-end;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.sheet-bg.on{display:flex}
+.sheet{width:100%;max-height:82vh;overflow-y:auto;border-radius:24px 24px 0 0;
+  padding:20px 19px calc(24px + env(safe-area-inset-bottom));animation:up .3s cubic-bezier(.2,.9,.3,1.05)}
+@keyframes up{from{transform:translateY(24px)}to{transform:none}}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--hair);margin:0 auto 14px}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:7px 0;
+  border-bottom:1px solid var(--hair)}
+.kv span:first-child{color:var(--muted)}
+.kv span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+footer{text-align:center;color:var(--faint);font-size:11px;padding:6px 0 4px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<div id="cabin" role="alert" aria-live="assertive">
+  <div class="t" id="cabin-t">—</div>
+  <div class="s" id="cabin-s">车内提醒 · 语音播报 + 震动</div>
+</div>
+
+<header>
+  <h1>车队级实时监管</h1>
+  <p class="lede">模式B · 后台服务器实时监测与汇总<br>一块 GPU 看住整个车队，管理者在一块屏上看全部风险。</p>
+</header>
+
+<div class="kpis">
+  <div class="glass kpi"><div class="v" id="k-online">—</div><div class="k">在线车辆</div></div>
+  <div class="glass kpi"><div class="v" id="k-ev">0</div><div class="k">今日告警</div></div>
+  <div class="glass kpi"><div class="v" id="k-crit" style="color:var(--crit)">0</div><div class="k">严重</div></div>
+  <div class="glass kpi"><div class="v" id="k-score">—</div><div class="k">车队评分</div></div>
+</div>
+
+<section class="glass">
+  <h2>一路车载视频接入 <span class="tag real"><i class="dot"></i>本机真实计算</span></h2>
+  <div class="stage">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="fallback" width="480" height="360" style="display:none"></canvas>
+    <div class="hud">
+      <span class="chip" id="chip-src">未接入</span>
+      <span class="chip" id="chip-fps">—</span>
+      <span class="chip" id="chip-blk">遮挡检测 待机</span>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="p" id="btn-cam">接入手机摄像头</button>
+    <button id="btn-belt">模拟：未系安全带</button>
+    <button id="btn-fatigue">模拟：疲劳闭眼</button>
+    <button id="btn-phone">模拟：使用手机</button>
+  </div>
+  <div class="metrics">
+    <div class="metric"><b id="m-lum">—</b><span>画面亮度（真实）</span></div>
+    <div class="metric"><b id="m-tex">—</b><span>纹理能量（真实）</span></div>
+    <div class="metric"><b id="m-mov">—</b><span>帧间变化（真实）</span></div>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:11px 0 0;line-height:1.6">
+    上面三个数字是逐帧对摄像头画面真实计算的，<b>摄像头遮挡告警由它们真实驱动</b>——
+    用手挡住镜头两秒试试。安全带 / 疲劳 / 手机需要服务器端 GPU 模型，手机上跑不了，
+    因此由上面三个按钮模拟输入；但它们<b>之后</b>经过的滑窗投票、最短持续时长、
+    冷却与升级、分级播报，全部是与服务器端 Python 实现一一对应的真实逻辑。
+  </p>
+</section>
+
+<section class="glass">
+  <h2>双通道告警 <span class="n">需求 (c)</span></h2>
+  <div class="chan">
+    <div>
+      <h3>车内 · 提醒当事人</h3>
+      <p>分级播报：提示不打扰、警告播一次、严重循环播报加蜂鸣震动。</p>
+      <div class="c" id="c-cabin">0 <span style="font-size:11px;color:var(--muted)">次</span></div>
+    </div>
+    <div>
+      <h3>后台 · 告警管理者</h3>
+      <p>事件落库、实时推送看板、断网落盘补传，恢复后自动补齐。</p>
+      <div class="c" id="c-backend">0 <span style="font-size:11px;color:var(--muted)">条</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="glass">
+  <h2>车队实时状态 <span class="tag sim"><i class="dot"></i>模拟数据</span></h2>
+  <div class="fleet" id="fleet"></div>
+</section>
+
+<section class="glass">
+  <h2>实时告警流 <span class="n" id="n-stream">0 条</span></h2>
+  <div class="stream" id="stream"></div>
+</section>
+
+<section class="glass">
+  <h2>违规类型分布 <span class="n">近 24 小时</span></h2>
+  <div id="chart-bar"></div>
+</section>
+
+<section class="glass">
+  <h2>事件时段趋势 <span class="n">近 24 小时</span></h2>
+  <div id="chart-line"></div>
+  <div class="legend">
+    <span><i style="background:var(--info)"></i>全部事件</span>
+    <span><i style="background:var(--crit)"></i>严重告警</span>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin:10px 0 0;line-height:1.6">
+    模拟数据刻意让疲劳事件在凌晨聚集——这是行业里反复被验证的规律，
+    也是「汇总」能给出、单车告警给不出的洞察。
+  </p>
+</section>
+
+<section class="glass">
+  <h2>驾驶员安全评分 <span class="tag sim"><i class="dot"></i>模拟数据</span></h2>
+  <div id="drivers"></div>
+  <p style="font-size:11px;color:var(--muted);margin:11px 0 0;line-height:1.6">
+    100 分制加权扣分，权重按<b>是否直接致命</b>排序而非检测难度：
+    疲劳 12 / 未系安全带 10 / 手机 10 / 分心 6 / 乘客未系 3。
+    按事件条数排名会把「乘客没系带 20 次」排在「疲劳 2 次」前面，那是错的。
+  </p>
+</section>
+
+<section class="glass honest">
+  <h2>哪些是真的，哪些是模拟的</h2>
+  <ul>
+    <li><b>真实：</b>摄像头画面的亮度 / 纹理 / 帧间变化逐帧计算，摄像头遮挡告警由此真实产生。</li>
+    <li><b>真实：</b>防误报确认状态机（滑窗投票 + 最短持续时长 + 冷却 + 升级）、
+        分级播报文案、双通道分发逻辑，与仓库里 <code>common/</code> 的 Python 实现一致。</li>
+    <li><b>模拟：</b>安全带 / 疲劳 / 手机的逐帧判定。真实实现依赖服务器端 GPU 模型
+        （YOLO11-pose + MediaPipe 478 点人脸），手机浏览器里跑不了。</li>
+    <li><b>模拟：</b>车队里其余车辆的状态、历史事件、评分与图表数据。</li>
+    <li><b>服务器端已实测：</b>真模型在真实人像素材上 3/3 检出、0 误报、平均告警延迟 2.98 秒；
+        合成基准素材上 4/4 检出、0 误报，6 次眨眼与 3 次短暂低头干扰项全部未触发告警。
+        详见仓库 <code>mode-b-server/README.md</code>。</li>
+    <li><b>能力边界：</b>超速无法从图像判断，必须接 OBD / CAN / GPS 信号；
+        本页所有超速事件均为模拟。</li>
+  </ul>
+</section>
+
+<footer>车辆安全监测 · 模式B 演示页<br>单文件自包含 · 无外部依赖 · 图表为内联 SVG</footer>
+
+<div class="sheet-bg" id="sheet-bg"><div class="glass sheet" id="sheet"></div></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+
+/* ============================================================
+   1. 违规字典与严重度 —— 与 common/schema/violation_types.py 对齐
+   ============================================================ */
+const V = {
+  'driver.no_seatbelt':      {zh:'驾驶员未系安全带', sev:'critical', say:'请系好安全带',        pen:10},
+  'driver.fatigue':          {zh:'疲劳驾驶',        sev:'critical', say:'检测到疲劳，请就近停车休息', pen:12},
+  'driver.phone_use':        {zh:'驾驶中使用手机',   sev:'critical', say:'行车中请勿使用手机',   pen:10},
+  'driver.distraction':      {zh:'驾驶员分心',      sev:'warn',     say:'请注意前方道路',       pen:6},
+  'driver.smoking':          {zh:'驾驶中抽烟',      sev:'warn',     say:'车内请勿吸烟',         pen:4},
+  'driver.hands_off_wheel':  {zh:'双手脱离方向盘',   sev:'warn',     say:'请双手握好方向盘',     pen:4},
+  'passenger.no_seatbelt':   {zh:'乘客未系安全带',   sev:'warn',     say:'请提醒乘客系好安全带', pen:3},
+  'passenger.overload':      {zh:'车辆超员',        sev:'warn',     say:'车辆超员',            pen:6},
+  'vehicle.speeding':        {zh:'车辆超速',        sev:'critical', say:'您已超速，请减速',     pen:10},
+  'system.camera_blocked':   {zh:'摄像头异常',      sev:'warn',     say:'摄像头被遮挡，请检查', pen:8},
+};
+const SEV_STYLE = {info:{repeat:0,beep:false,color:'#0a84ff'},
+                   warn:{repeat:1,beep:false,color:'#ff9f0a'},
+                   critical:{repeat:3,beep:true,color:'#ff3b30'}};
+
+/* ============================================================
+   2. 防误报确认状态机
+      —— common/schema/confirmation.py 的 JavaScript 等价实现
+         滑窗投票 → 最短持续时长 → 冷却 → 升级 → 恢复确认
+      这段是真实逻辑，不是演示用的假动画。
+   ============================================================ */
+const RULES = {
+  'driver.fatigue':        {win:8,  hit:.5, minDur:4,   cool:60, esc:30},
+  'driver.distraction':    {win:4,  hit:.7, minDur:3,   cool:45, esc:null},
+  'driver.no_seatbelt':    {win:3,  hit:.7, minDur:2,   cool:60, esc:20},
+  'passenger.no_seatbelt': {win:3,  hit:.7, minDur:2,   cool:90, esc:null},
+  'driver.phone_use':      {win:4,  hit:.6, minDur:2.5, cool:45, esc:null},
+  'system.camera_blocked': {win:3,  hit:.6, minDur:2,   cool:30, esc:null},
+};
+const FALLBACK_RULE = {win:3, hit:.6, minDur:2, cool:30, esc:null};
+
+class Confirmer {
+  constructor(){ this.s = {}; }
+  rule(v){ return RULES[v] || FALLBACK_RULE; }
+  update(v, hit, now, conf){
+    const r = this.rule(v);
+    const st = this.s[v] || (this.s[v] = {samples:[], since:null, last:null, reported:false});
+    st.samples.push([now, hit]);
+    while (st.samples.length && now - st.samples[0][0] > r.win) st.samples.shift();
+    const total = st.samples.length;
+    const hits = st.samples.filter(x => x[1]).length;
+    const ratio = total ? hits / total : 0;
+
+    let released = false;
+    if (ratio >= r.hit){ if (st.since === null) st.since = now; }
+    else if (ratio <= 0.2){ if (st.since !== null) released = true; st.since = null; st.reported = false; }
+
+    const active = st.since !== null;
+    const dur = active ? now - st.since : 0;
+    let sev = V[v] ? V[v].sev : 'warn';
+    if (active && r.esc && dur >= r.esc) sev = 'critical';
+
+    let alert = false;
+    if (active && dur >= r.minDur){
+      const cooled = st.last === null || (now - st.last) >= r.cool;
+      if (!st.reported || cooled){ alert = true; st.reported = true; st.last = now; }
+    }
+    return {alert, active, dur, ratio, sev, released,
+            confidence: active ? +(ratio * (conf ?? 1)).toFixed(3) : +(conf ?? 1).toFixed(3)};
+  }
+}
+const confirmer = new Confirmer();
+
+/* ============================================================
+   3. 双通道告警分发 —— common/alerting/channels.py 的等价实现
+   ============================================================ */
+let nCabin = 0, nBackend = 0, allEvents = [], evSeq = 0;
+
+function dispatch(ev){
+  const ok = {in_cabin:false, backend:false};
+  if (ev.severity !== 'info'){ inCabin(ev); ok.in_cabin = true; }
+  else ok.in_cabin = true;
+  backend(ev); ok.backend = true;
+  ev.channels = ok;
+  return ok;
+}
+
+function inCabin(ev){                      // 车内：横幅 + 震动 + 语音
+  const st = SEV_STYLE[ev.severity] || SEV_STYLE.warn;
+  const meta = V[ev.violation] || {};
+  const box = $('#cabin');
+  $('#cabin-t').textContent = meta.say || meta.zh || ev.violation;
+  $('#cabin-s').textContent = `${ev.vehicle} · ${ev.severity === 'critical' ? '严重告警 · 循环播报 + 蜂鸣' : '警告 · 播报一次'}`;
+  box.style.background = st.color; box.classList.add('on');
+  if (navigator.vibrate) navigator.vibrate(st.beep ? [230,90,230,90,230] : 170);
+  speak(meta.say || meta.zh, st.repeat);
+  clearTimeout(inCabin._t);
+  inCabin._t = setTimeout(() => box.classList.remove('on'), 5200);
+  nCabin++; $('#c-cabin').innerHTML = nCabin + ' <span style="font-size:11px;color:var(--muted)">次</span>';
+}
+
+function speak(text, repeat){
+  if (!window.speechSynthesis || !text || !repeat) return;
+  try{
+    for (let i = 0; i < Math.min(repeat, 3); i++){
+      const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-CN'; u.rate = 1.05;
+      speechSynthesis.speak(u);
+    }
+  }catch(e){}
+}
+
+function backend(ev){                      // 后台：入流水 + 计数 + 统计
+  nBackend++; $('#c-backend').innerHTML = nBackend + ' <span style="font-size:11px;color:var(--muted)">条</span>';
+  allEvents.unshift(ev); if (allEvents.length > 400) allEvents.pop();
+  renderEvent(ev);
+  bump(ev);
+}
+
+/* ============================================================
+   4. 事件构造（对应 common/schema/safety_event.py 的 SafetyEvent）
+   ============================================================ */
+function makeEvent(violation, vehicle, c, extra){
+  const meta = V[violation] || {zh:violation, sev:'warn'};
+  return {
+    id: 'e' + (++evSeq),
+    ts: Date.now() / 1000,
+    violation, vehicle,
+    severity: (c && c.sev) || meta.sev,
+    duration_s: c ? +c.dur.toFixed(1) : 0,
+    confidence: c ? c.confidence : 0.9,
+    mode: 'mode_b_server',
+    real: !!(extra && extra.real),
+    signals: Object.assign({}, extra && extra.signals),
+  };
+}
+
+/* ============================================================
+   5. 本机摄像头：真实画面指标 + 真实遮挡判定
+   ============================================================ */
+const cam = $('#cam'), fb = $('#fallback');
+let stream = null, useFallback = false, prevGray = null, fpsT = performance.now(), fpsN = 0;
+const work = document.createElement('canvas'); work.width = 96; work.height = 72;
+const wctx = work.getContext('2d', {willReadFrequently:true});
+const LOCAL_VEHICLE = '本机-DEMO';
+const manual = {'driver.no_seatbelt':0, 'driver.fatigue':0, 'driver.phone_use':0};
+
+$('#btn-cam').onclick = async () => {
+  if (stream){ stopCam(); return; }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}}, audio:false});
+    cam.srcObject = stream; cam.style.display = 'block'; fb.style.display = 'none';
+    useFallback = false;
+    $('#chip-src').textContent = '手机摄像头（真实画面）';
+    $('#btn-cam').textContent = '断开摄像头'; $('#btn-cam').classList.add('on');
+  }catch(err){
+    useFallback = true; startFallback();
+    $('#chip-src').textContent = '未授权 → 合成画面降级';
+    $('#btn-cam').textContent = '重试授权';
+  }
+};
+function stopCam(){
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  cam.srcObject = null; useFallback = true; startFallback();
+  $('#chip-src').textContent = '已断开 → 合成画面降级';
+  $('#btn-cam').textContent = '接入手机摄像头'; $('#btn-cam').classList.remove('on');
+}
+
+/* 降级：没有摄像头权限时，用 Canvas 画一段合成驾驶舱，链路照常跑 */
+let fbT = 0;
+function startFallback(){
+  cam.style.display = 'none'; fb.style.display = 'block';
+  if (startFallback._on) return; startFallback._on = true;
+  const c = fb.getContext('2d');
+  (function draw(){
+    if (!useFallback){ startFallback._on = false; return; }
+    fbT += 1 / 30;
+    const W = fb.width, H = fb.height;
+    c.fillStyle = '#14161b'; c.fillRect(0, 0, W, H);
+    c.fillStyle = '#232833'; c.fillRect(0, H * .78, W, H);
+    for (const [cx, isDrv] of [[W * .32, true], [W * .70, false]]){
+      c.fillStyle = '#a4988c';
+      c.beginPath(); c.ellipse(cx, H * .34, W * .085, H * .13, 0, 0, 7); c.fill();
+      c.fillStyle = '#5c6a86';
+      c.beginPath(); c.ellipse(cx, H * .70, W * .13, H * .18, 0, Math.PI, 0); c.fill();
+      const closed = isDrv && manual['driver.fatigue'] > Date.now();
+      c.fillStyle = closed ? '#2a2622' : '#fff';
+      for (const dx of [-W * .033, W * .033]){
+        c.beginPath();
+        if (closed) c.rect(cx + dx - 7, H * .32, 14, 2);
+        else c.ellipse(cx + dx, H * .32, 6, 4, 0, 0, 7);
+        c.fill();
+      }
+      const noBelt = isDrv ? manual['driver.no_seatbelt'] > Date.now() : false;
+      if (!noBelt){
+        c.strokeStyle = '#e6e2d8'; c.lineWidth = 6;
+        c.beginPath(); c.moveTo(cx - W * .085, H * .48); c.lineTo(cx + W * .07, H * .84); c.stroke();
+      }
+      if (isDrv && manual['driver.phone_use'] > Date.now()){
+        c.fillStyle = '#2a2f38'; c.fillRect(cx + W * .095, H * .30, 15, 26);
+        c.fillStyle = '#7bc0ea'; c.fillRect(cx + W * .095 + 2, H * .30 + 3, 11, 20);
+      }
+    }
+    c.fillStyle = 'rgba(255,255,255,.55)'; c.font = '11px -apple-system,sans-serif';
+    c.fillText('合成画面（未授权摄像头时的降级）', 8, 16);
+    requestAnimationFrame(draw);
+  })();
+}
+
+/* 每帧真实计算：平均亮度、纹理能量（相邻差分）、帧间变化 */
+function analyzeFrame(){
+  const src = useFallback ? fb : cam;
+  if (!useFallback && (!cam.videoWidth || cam.readyState < 2)) return null;
+  try{ wctx.drawImage(src, 0, 0, work.width, work.height); }catch(e){ return null; }
+  const d = wctx.getImageData(0, 0, work.width, work.height).data;
+  const n = work.width * work.height;
+  const g = new Float32Array(n);
+  let sum = 0;
+  for (let i = 0; i < n; i++){
+    const v = (d[i*4] * 0.299 + d[i*4+1] * 0.587 + d[i*4+2] * 0.114);
+    g[i] = v; sum += v;
+  }
+  const mean = sum / n;
+  let tex = 0;
+  for (let y = 1; y < work.height - 1; y++)
+    for (let x = 1; x < work.width - 1; x++){
+      const i = y * work.width + x;
+      tex += Math.abs(4*g[i] - g[i-1] - g[i+1] - g[i-work.width] - g[i+work.width]);
+    }
+  tex /= n;
+  let mov = 0;
+  if (prevGray){ for (let i = 0; i < n; i++) mov += Math.abs(g[i] - prevGray[i]); mov /= n; }
+  prevGray = g;
+  return {mean, tex, mov};
+}
+
+/* 真实的摄像头遮挡判定：画面过暗，或者几乎没有纹理 */
+function isBlocked(m){ return m.mean < 22 || (m.tex < 2.2 && m.mov < 1.2); }
+
+function loop(){
+  const now = Date.now() / 1000;
+  const m = analyzeFrame();
+  if (m){
+    fpsN++;
+    const dt = performance.now() - fpsT;
+    if (dt > 1000){ $('#chip-fps').textContent = (fpsN * 1000 / dt).toFixed(0) + ' fps'; fpsN = 0; fpsT = performance.now(); }
+    $('#m-lum').textContent = m.mean.toFixed(0);
+    $('#m-tex').textContent = m.tex.toFixed(1);
+    $('#m-mov').textContent = m.mov.toFixed(1);
+
+    const blk = isBlocked(m);
+    $('#chip-blk').textContent = blk ? '遮挡检测 命中' : '遮挡检测 正常';
+    const c = confirmer.update('system.camera_blocked', blk, now, 1);
+    if (c.alert) fire('system.camera_blocked', c, true,
+                      {mean:+m.mean.toFixed(1), tex:+m.tex.toFixed(2), mov:+m.mov.toFixed(2),
+                       method:'亮度 + 纹理能量阈值（本机真实计算）'});
+
+    // 模拟输入驱动的三项：判定是模拟的，确认逻辑是真的
+    for (const key of Object.keys(manual)){
+      const hit = manual[key] > Date.now();
+      const cc = confirmer.update(key, hit, now, 0.9);
+      if (cc.alert) fire(key, cc, false, {method:'手机端模拟输入（真实判定需服务器 GPU 模型）'});
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+function fire(violation, c, real, signals){
+  const ev = makeEvent(violation, LOCAL_VEHICLE, c, {real, signals});
+  dispatch(ev);
+}
+
+/* 模拟按钮：按住式的时间窗，长度足够越过最短持续时长 */
+function arm(key, seconds, label){
+  manual[key] = Date.now() + seconds * 1000;
+  const b = {'driver.no_seatbelt':'#btn-belt','driver.fatigue':'#btn-fatigue','driver.phone_use':'#btn-phone'}[key];
+  const el = $(b); el.classList.add('on');
+  setTimeout(() => el.classList.remove('on'), seconds * 1000);
+}
+$('#btn-belt').onclick    = () => arm('driver.no_seatbelt', 6);
+$('#btn-fatigue').onclick = () => arm('driver.fatigue', 10);
+$('#btn-phone').onclick   = () => arm('driver.phone_use', 7);
+
+/* ============================================================
+   6. 车队模拟（明确标注为模拟数据）
+   ============================================================ */
+const PLATES = ['京A','沪B','粤B','川A','浙A','苏E','鲁B','冀A'];
+const NAMES = ['张建国','李伟','王强','刘洋','陈磊','杨帆','赵鹏','孙涛'];
+const fleet = PLATES.map((p, i) => ({
+  id: p + (10000 + Math.floor(rnd(0, 89999))),
+  driver: NAMES[i],
+  online: Math.random() > 0.14,
+  active: null, penalty: Math.floor(rnd(0, 34)),
+}));
+
+function renderFleet(){
+  $('#fleet').innerHTML = fleet.map(v => {
+    const st = v.active
+      ? `<div class="st">● ${V[v.active].zh}</div>`
+      : `<div class="st ok">${v.online ? '● 正常行驶' : '○ 离线'}</div>`;
+    return `<div class="v"><div class="p"><span>${v.id}</span>
+      <span style="color:${v.online ? 'var(--ok)' : 'var(--faint)'};font-size:9px">●</span></div>
+      <div class="d">${v.driver} · 评分 ${Math.max(0, 100 - v.penalty)}</div>${st}</div>`;
+  }).join('');
+  $('#k-online').textContent = fleet.filter(v => v.online).length + '/' + fleet.length;
+  const avg = Math.round(fleet.reduce((a, v) => a + Math.max(0, 100 - v.penalty), 0) / fleet.length);
+  $('#k-score').textContent = avg;
+}
+
+const SIM_TYPES = Object.keys(V).filter(k => k !== 'system.camera_blocked');
+const SIM_W = SIM_TYPES.map(k => ({'passenger.no_seatbelt':22,'driver.no_seatbelt':18,
+  'driver.distraction':16,'driver.phone_use':12,'driver.fatigue':9,'driver.smoking':7,
+  'vehicle.speeding':6,'driver.hands_off_wheel':3,'passenger.overload':2})[k] || 4);
+
+function weighted(){
+  const t = SIM_W.reduce((a, b) => a + b, 0);
+  let r = Math.random() * t;
+  for (let i = 0; i < SIM_TYPES.length; i++){ r -= SIM_W[i]; if (r <= 0) return SIM_TYPES[i]; }
+  return SIM_TYPES[0];
+}
+
+function simTick(){
+  const v = pick(fleet.filter(x => x.online));
+  if (!v) return;
+  const vt = weighted();
+  const meta = V[vt];
+  const ev = makeEvent(vt, v.id, null, {real:false, signals:{simulated:true}});
+  ev.duration_s = +rnd(2, 22).toFixed(1);
+  ev.confidence = +rnd(.62, .97).toFixed(3);
+  v.active = vt; v.penalty += meta.pen;
+  setTimeout(() => { v.active = null; renderFleet(); }, rnd(4000, 9000));
+  nBackend++; $('#c-backend').innerHTML = nBackend + ' <span style="font-size:11px;color:var(--muted)">条</span>';
+  allEvents.unshift(ev); if (allEvents.length > 400) allEvents.pop();
+  renderEvent(ev); bump(ev); renderFleet();
+}
+
+/* ============================================================
+   7. 渲染：告警流 / KPI / 图表 / 评分
+   ============================================================ */
+let nEv = 0, nCrit = 0;
+const hist24 = new Array(24).fill(0), histCrit = new Array(24).fill(0);
+const byType = {};
+
+function bump(ev){
+  nEv++; if (ev.severity === 'critical') nCrit++;
+  $('#k-ev').textContent = nEv; $('#k-crit').textContent = nCrit;
+  byType[ev.violation] = (byType[ev.violation] || 0) + 1;
+  const h = new Date().getHours();
+  hist24[h]++; if (ev.severity === 'critical') histCrit[h]++;
+  drawBar(); drawLine(); drawDrivers();
+}
+
+function renderEvent(ev){
+  const box = $('#stream');
+  const meta = V[ev.violation] || {zh:ev.violation};
+  const el = document.createElement('div');
+  el.className = 'ev new';
+  el.onclick = () => openSheet(ev);
+  const badge = ev.real
+    ? '<span class="tag real" style="margin-left:6px"><i class="dot"></i>真实</span>'
+    : '<span class="tag sim" style="margin-left:6px"><i class="dot"></i>模拟</span>';
+  el.innerHTML = `<div class="bar ${ev.severity}"></div>
+    <div class="body"><div class="ti">${meta.zh}${badge}</div>
+    <div class="mt">${ev.vehicle} · 持续 ${ev.duration_s}s · 置信 ${ev.confidence}</div></div>
+    <div class="rt">${new Date(ev.ts * 1000).toLocaleTimeString('zh-CN',{hour12:false})}</div>`;
+  box.insertBefore(el, box.firstChild);
+  while (box.children.length > 40) box.removeChild(box.lastChild);
+  $('#n-stream').textContent = allEvents.length + ' 条';
+}
+
+function drawBar(){
+  const items = Object.entries(byType).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  if (!items.length) return;
+  const max = Math.max(...items.map(i => i[1]));
+  const rowH = 25, W = 320, H = items.length * rowH + 4;
+  $('#chart-bar').innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}">` + items.map(([k, n], i) => {
+    const w = Math.max(3, n / max * (W - 132)), y = i * rowH + 3;
+    const col = (V[k] && V[k].sev === 'critical') ? 'var(--crit)' : 'var(--info)';
+    return `<text x="0" y="${y + 12}">${(V[k] ? V[k].zh : k).slice(0, 7)}</text>
+      <rect x="92" y="${y + 2}" width="${w}" height="12" rx="6" fill="${col}" opacity=".82"/>
+      <text x="${w + 97}" y="${y + 12}">${n}</text>`;
+  }).join('') + '</svg>';
+}
+
+function drawLine(){
+  const W = 320, H = 96, P = 14;
+  const max = Math.max(...hist24, 1);
+  const x = i => P + i * (W - 2 * P) / 23;
+  const y = v => H - P - v / max * (H - 2 * P - 8);
+  const path = a => a.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  $('#chart-line').innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}">
+    <defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--info)" stop-opacity=".36"/>
+      <stop offset="100%" stop-color="var(--info)" stop-opacity="0"/></linearGradient></defs>
+    <path d="${path(hist24)} L${x(23).toFixed(1)},${H - P} L${x(0).toFixed(1)},${H - P} Z" fill="url(#lg)"/>
+    <path d="${path(hist24)}" fill="none" stroke="var(--info)" stroke-width="1.8"/>
+    <path d="${path(histCrit)}" fill="none" stroke="var(--crit)" stroke-width="1.3" stroke-dasharray="3 3"/>
+    <text x="${P}" y="${H - 2}">0 时</text><text x="${W / 2 - 12}" y="${H - 2}">12 时</text>
+    <text x="${W - P - 20}" y="${H - 2}">23 时</text></svg>`;
+}
+
+function drawDrivers(){
+  const rows = fleet.slice().sort((a, b) => b.penalty - a.penalty).slice(0, 5);
+  $('#drivers').innerHTML = rows.map(v => {
+    const s = Math.max(0, 100 - v.penalty);
+    const g = s >= 90 ? ['优秀','var(--ok)'] : s >= 75 ? ['良好','var(--info)']
+            : s >= 60 ? ['需关注','var(--warn)'] : ['高风险','var(--crit)'];
+    return `<div class="kv"><span>${v.driver} · ${v.id}</span>
+      <span><b>${s}</b> <span style="color:${g[1]}">${g[0]}</span></span></div>`;
+  }).join('');
+}
+
+/* ============================================================
+   8. 事件详情
+   ============================================================ */
+function openSheet(ev){
+  const meta = V[ev.violation] || {zh:ev.violation};
+  const st = SEV_STYLE[ev.severity] || SEV_STYLE.warn;
+  const sig = Object.entries(ev.signals || {})
+    .map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join('')
+    || '<div class="kv"><span>（无附加信号）</span><span></span></div>';
+  $('#sheet').innerHTML = `<div class="grab"></div>
+    <h2 style="font-size:18px">${meta.zh}
+      <span class="tag ${ev.real ? 'real' : 'sim'}"><i class="dot"></i>${ev.real ? '本机真实判定' : '模拟数据'}</span></h2>
+    <div class="kv"><span>车辆</span><span>${ev.vehicle}</span></div>
+    <div class="kv"><span>时间</span><span>${new Date(ev.ts * 1000).toLocaleString('zh-CN',{hour12:false})}</span></div>
+    <div class="kv"><span>严重等级</span><span style="color:${st.color}">${ev.severity}</span></div>
+    <div class="kv"><span>持续时长</span><span>${ev.duration_s} 秒</span></div>
+    <div class="kv"><span>置信度</span><span>${ev.confidence}</span></div>
+    <div class="kv"><span>产生模式</span><span>${ev.mode}</span></div>
+    <div class="kv"><span>车内播报</span><span>${meta.say || '—'}（重复 ${st.repeat} 次${st.beep ? ' + 蜂鸣' : ''}）</span></div>
+    <div class="kv"><span>告警通道</span><span>车内 ${ev.channels && ev.channels.in_cabin ? '✓' : '—'} · 后台 ${ev.channels && ev.channels.backend ? '✓' : '—'}</span></div>
+    <h2 style="margin-top:16px;font-size:13px">原始信号</h2>${sig}
+    <p style="font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:14px">
+      后台保留原始信号是为了让每一条告警都能被复核与申诉。
+      误报必须有出口——没有申诉流程，司机第一次被误判之后就会想办法把系统关掉。</p>
+    <div style="margin-top:14px"><button class="p" style="width:100%" onclick="closeSheet()">关闭</button></div>`;
+  $('#sheet-bg').classList.add('on');
+}
+function closeSheet(){ $('#sheet-bg').classList.remove('on'); }
+$('#sheet-bg').onclick = e => { if (e.target === $('#sheet-bg')) closeSheet(); };
+
+/* ============================================================
+   9. 启动
+   ============================================================ */
+(function boot(){
+  // 预填 24 小时历史（模拟）：疲劳在凌晨聚集
+  for (let h = 0; h < 24; h++){
+    const night = (h <= 5 || h >= 22) ? 2.1 : 1;
+    const n = Math.round(rnd(1, 6) * night);
+    hist24[h] = n; histCrit[h] = Math.round(n * rnd(.15, .45));
+  }
+  for (const [k, n] of [['passenger.no_seatbelt', 21], ['driver.no_seatbelt', 17],
+                        ['driver.distraction', 14], ['driver.phone_use', 11],
+                        ['driver.fatigue', 8], ['driver.smoking', 5]]) byType[k] = n;
+  nEv = Object.values(byType).reduce((a, b) => a + b, 0);
+  nCrit = 36;
+  $('#k-ev').textContent = nEv; $('#k-crit').textContent = nCrit;
+
+  renderFleet(); drawBar(); drawLine(); drawDrivers();
+  useFallback = true; startFallback();
+  requestAnimationFrame(loop);
+  setInterval(simTick, 4200);
+  setTimeout(simTick, 900);
+  setInterval(() => { fleet.forEach(v => { if (Math.random() < .06) v.online = !v.online; }); renderFleet(); }, 9000);
+})();
+</script>
+</body>
+</html>
