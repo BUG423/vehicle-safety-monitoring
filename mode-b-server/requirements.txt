@@ -1,0 +1,15 @@
+# 模式B 后台服务器 —— 依赖清单
+# 环境已预装 torch 2.11+cu128 / torchvision 0.26 / opencv 4.13 / onnxruntime 1.23，
+# 此处只列本路线额外需要的部分。
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+websockets>=12          # uvicorn 的 WebSocket 实现
+python-multipart>=0.0.9 # HTTP 帧上传（multipart/form-data）
+numpy>=1.26
+opencv-python>=4.9
+
+# 真模型后端（二选一或都装）
+# torch>=2.4 torchvision>=0.19   —— Keypoint R-CNN / Faster R-CNN，权重由 torchvision 自动下载
+# ultralytics>=8.3               —— YOLO11，权重由 ultralytics 自动下载
+# mediapipe>=0.10                —— Face Mesh 468 点，用于真实 EAR/PERCLOS
