@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>车队安全监管看板 · 模式B</title>
+<style>
+:root{
+  --bg:#f5f5f7; --panel:rgba(255,255,255,.72); --panel-2:rgba(255,255,255,.55);
+  --line:rgba(0,0,0,.08); --text:#1d1d1f; --muted:#6e6e73;
+  --crit:#ff3b30; --warn:#ff9f0a; --info:#0a84ff; --ok:#30d158;
+  --radius:18px;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#000; --panel:rgba(28,28,30,.72); --panel-2:rgba(44,44,46,.55);
+    --line:rgba(255,255,255,.12); --text:#f5f5f7; --muted:#98989d; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  font-size:14px;line-height:1.5;}
+body::before{content:"";position:fixed;inset:0;z-index:-1;
+  background:
+    radial-gradient(60vw 60vw at 12% 8%, rgba(10,132,255,.16), transparent 62%),
+    radial-gradient(52vw 52vw at 88% 0%, rgba(255,159,10,.14), transparent 58%),
+    radial-gradient(58vw 58vw at 50% 100%, rgba(48,209,88,.12), transparent 60%);}
+.wrap{max-width:1500px;margin:0 auto;padding:20px 20px 56px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{font-size:21px;margin:0;letter-spacing:-.02em;font-weight:600}
+.sub{color:var(--muted);font-size:12.5px}
+.glass{background:var(--panel);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  backdrop-filter:blur(20px) saturate(180%);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:0 8px 30px rgba(0,0,0,.06)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+  font-size:12px;border:1px solid var(--line);background:var(--panel-2)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.dot.off{background:var(--muted)}
+.grid{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:14px}
+.kpi{padding:15px 17px}
+.kpi .v{font-size:29px;font-weight:600;letter-spacing:-.03em;line-height:1.15}
+.kpi .k{color:var(--muted);font-size:12px;margin-top:2px}
+.cols{grid-template-columns:1.25fr 1fr;align-items:start}
+@media(max-width:1080px){.cols{grid-template-columns:1fr}}
+section{padding:16px 18px}
+h2{font-size:14px;margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+h2 .n{color:var(--muted);font-weight:400;font-size:12px}
+.stream{max-height:420px;overflow:auto;margin:-4px}
+.ev{display:flex;gap:11px;align-items:flex-start;padding:10px;border-radius:13px;margin:4px;
+  background:var(--panel-2);border:1px solid var(--line);cursor:pointer;transition:transform .12s ease}
+.ev:hover{transform:translateY(-1px)}
+.ev.new{animation:in .45s ease}
+@keyframes in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.bar{width:3px;border-radius:2px;align-self:stretch;background:var(--info)}
+.bar.critical{background:var(--crit)} .bar.warn{background:var(--warn)}
+.ev .t{font-weight:600;font-size:13px}
+.ev .m{color:var(--muted);font-size:11.5px;margin-top:2px}
+.ev img{width:64px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.veh{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.vcard{padding:12px 13px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line)}
+.vcard .p{font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.vcard .d{color:var(--muted);font-size:11.5px;margin-top:3px}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;min-height:19px}
+.tag{font-size:10.5px;padding:2px 7px;border-radius:999px;background:rgba(255,59,48,.14);color:var(--crit)}
+.tag.warn{background:rgba(255,159,10,.16);color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:500;font-size:11.5px}
+.score{font-weight:600}
+.g-优秀{color:var(--ok)} .g-良好{color:var(--info)} .g-需关注{color:var(--warn)} .g-高风险{color:var(--crit)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.42);display:none;align-items:center;
+  justify-content:center;padding:18px;z-index:50;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.modal.on{display:flex}
+.sheet{max-width:640px;width:100%;max-height:86vh;overflow:auto;padding:20px 22px;border-radius:22px}
+.sheet img{width:100%;border-radius:13px;border:1px solid var(--line);margin:10px 0}
+pre{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px;
+  overflow:auto;font-size:11.5px;max-height:220px;margin:8px 0}
+button{font:inherit;padding:7px 15px;border-radius:11px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--text);cursor:pointer}
+button.primary{background:var(--info);color:#fff;border-color:transparent}
+button.danger{background:var(--crit);color:#fff;border-color:transparent}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.note{color:var(--muted);font-size:11.5px;margin-top:10px;line-height:1.55}
+svg text{font-size:10px;fill:var(--muted)}
+.empty{color:var(--muted);font-size:12.5px;padding:14px 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>车队安全监管看板</h1>
+      <div class="sub">模式B · 后台服务器实时监测与汇总</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="pill"><span class="dot off" id="wsdot"></span><span id="wstext">连接中…</span></span>
+      <span class="pill" id="engine">感知后端 —</span>
+      <span class="pill" id="thr">吞吐 —</span>
+    </div>
+  </header>
+
+  <div class="grid kpis">
+    <div class="glass kpi"><div class="v" id="k-online">—</div><div class="k">在线车辆 / 总数</div></div>
+    <div class="glass kpi"><div class="v" id="k-events">—</div><div class="k">24 小时事件</div></div>
+    <div class="glass kpi"><div class="v" id="k-crit" style="color:var(--crit)">—</div><div class="k">其中严重告警</div></div>
+    <div class="glass kpi"><div class="v" id="k-pending">—</div><div class="k">待复核</div></div>
+    <div class="glass kpi"><div class="v" id="k-lat">—</div><div class="k">端到端延迟 P95</div></div>
+  </div>
+
+  <div class="grid cols">
+    <div class="grid" style="gap:14px">
+      <section class="glass">
+        <h2>实时告警流 <span class="n" id="n-stream">0 条</span></h2>
+        <div class="stream" id="stream"><div class="empty">等待告警…</div></div>
+      </section>
+      <section class="glass">
+        <h2>车队状态 <span class="n" id="n-veh">0 台</span></h2>
+        <div class="veh" id="veh"><div class="empty">暂无接入车辆</div></div>
+      </section>
+    </div>
+
+    <div class="grid" style="gap:14px">
+      <section class="glass">
+        <h2>违规类型分布 <span class="n">近 24 小时</span></h2>
+        <div id="chart-violation"><div class="empty">暂无数据</div></div>
+      </section>
+      <section class="glass">
+        <h2>事件时段趋势 <span class="n">近 24 小时</span></h2>
+        <div id="chart-timeline"><div class="empty">暂无数据</div></div>
+      </section>
+      <section class="glass">
+        <h2>驾驶员安全评分 <span class="n">近 7 天 · 分低者优先</span></h2>
+        <div id="drivers"><div class="empty">暂无数据</div></div>
+      </section>
+    </div>
+  </div>
+
+  <p class="note">
+    评分口径：100 分制，按违规类型加权扣分（疲劳 12 / 未系安全带 10 / 手机 10 / 分心 6 / 乘客未系 3 …）。
+    权重按「是否直接致命」排序，不按检测难度排序。
+  </p>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="glass sheet" id="sheet"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = t => new Date(t*1000).toLocaleTimeString('zh-CN',{hour12:false});
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LABEL = {
+ 'driver.no_seatbelt':'驾驶员未系安全带','driver.fatigue':'疲劳驾驶','driver.distraction':'驾驶员分心',
+ 'driver.phone_use':'驾驶中使用手机','driver.smoking':'驾驶中抽烟','driver.hands_off_wheel':'双手脱离方向盘',
+ 'driver.absent':'驾驶位无人','driver.identity_mismatch':'驾驶员身份不符','passenger.no_seatbelt':'乘客未系安全带',
+ 'passenger.overload':'车辆超员','passenger.child_front_seat':'儿童乘坐副驾','vehicle.speeding':'车辆超速',
+ 'vehicle.harsh_driving':'急加速/急刹车','system.camera_blocked':'摄像头异常'};
+const lab = v => LABEL[v] || v;
+
+let events = [], byId = {};
+
+/* ---------- WebSocket 实时推送 ---------- */
+function connect(){
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/dashboard`);
+  ws.onopen = () => { $('#wsdot').classList.remove('off'); $('#wstext').textContent='实时连接'; };
+  ws.onclose = () => { $('#wsdot').classList.add('off'); $('#wstext').textContent='已断开，重连中'; setTimeout(connect, 2000); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'hello') renderSystem(m.system);
+    else if (m.type === 'event') pushEvent(m.event, true);
+    else if (m.type === 'review') { const ev = byId[m.event_id]; if (ev) ev.review_status = m.status; }
+  };
+  setInterval(()=>{ if(ws.readyState===1) ws.send('ping'); }, 15000);
+}
+
+function renderSystem(sys){
+  if (!sys) return;
+  const d = sys.detector || {};
+  const face = sys.face_module || {};
+  $('#engine').textContent = `感知后端 ${d.name||'-'} · ${d.pose_model||d.kind||''}` +
+      (face.name ? ' + 人脸468点' : '');
+  const s = sys.scheduler || {};
+  $('#thr').textContent = `吞吐 ${s.throughput_fps||0} fps · 批 ${s.batch_size_avg||0}`;
+}
+
+function pushEvent(ev, isNew){
+  if (byId[ev.event_id]) return;
+  byId[ev.event_id] = ev; events.unshift(ev);
+  if (events.length > 300) events.length = 300;
+  const box = $('#stream');
+  if (box.querySelector('.empty')) box.innerHTML = '';
+  const sev = ev.severity || 'info';
+  const img = ev.evidence && ev.evidence.frame_uri
+      ? `<img src="${esc(ev.evidence.frame_uri)}" alt="证据帧" loading="lazy">` : '';
+  const el = document.createElement('div');
+  el.className = 'ev' + (isNew ? ' new' : '');
+  el.onclick = () => openModal(ev.event_id);
+  el.innerHTML = `<div class="bar ${esc(sev)}"></div>
+    <div style="flex:1;min-width:0">
+      <div class="t">${esc(lab(ev.violation))}</div>
+      <div class="m">${esc(ev.vehicle_id)} · ${fmt(ev.ts)} · 持续 ${(ev.duration_s||0).toFixed(1)}s · 置信 ${ev.confidence}</div>
+    </div>${img}`;
+  box.insertBefore(el, box.firstChild);
+  while (box.children.length > 120) box.removeChild(box.lastChild);
+  $('#n-stream').textContent = events.length + ' 条';
+}
+
+/* ---------- 轮询汇总数据 ---------- */
+async function j(u){ const r = await fetch(u); return r.json(); }
+
+async function refresh(){
+  try{
+    const [ov, vs, vi, tl, dr, sys] = await Promise.all([
+      j('/api/v1/stats/overview'), j('/api/v1/vehicles'), j('/api/v1/stats/violations'),
+      j('/api/v1/stats/timeline'), j('/api/v1/stats/drivers'), j('/api/v1/system')]);
+    $('#k-online').textContent = `${ov.vehicles_online} / ${ov.vehicles}`;
+    $('#k-events').textContent = ov.events;
+    $('#k-crit').textContent = ov.critical;
+    $('#k-pending').textContent = ov.pending_review;
+    const p95 = Object.values(sys.pipelines||{}).map(p=>p.e2e_ms_p95).filter(x=>x>0);
+    $('#k-lat').textContent = p95.length ? Math.round(Math.max(...p95)) + ' ms' : '—';
+    renderSystem(sys); renderVehicles(vs.vehicles); barChart(vi.items); areaChart(tl.items);
+    renderDrivers(dr.items);
+  }catch(e){ /* 服务重启时忽略 */ }
+}
+
+function renderVehicles(list){
+  $('#n-veh').textContent = list.length + ' 台';
+  const box = $('#veh');
+  if (!list.length){ box.innerHTML = '<div class="empty">暂无接入车辆</div>'; return; }
+  box.innerHTML = list.map(v => {
+    const tags = (v.active_violations||[]).map(a =>
+      `<span class="tag ${a.severity==='critical'?'':'warn'}">${esc(a.label)} ${a.duration_s}s</span>`).join('');
+    const st = v.pipeline || {};
+    return `<div class="vcard">
+      <div class="p"><span>${esc(v.plate||v.vehicle_id)}</span>
+        <span class="dot ${v.online?'':'off'}"></span></div>
+      <div class="d">${esc(v.driver_name||'未绑定驾驶员')} · ${esc(v.source_kind||'-')}</div>
+      <div class="d">${st.frames||0} 帧 · 推理 ${st.infer_ms_avg||0}ms · 端到端 ${st.e2e_ms_avg||0}ms</div>
+      <div class="tags">${tags}</div></div>`;
+  }).join('');
+}
+
+function renderDrivers(list){
+  const box = $('#drivers');
+  if (!list || !list.length){ box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+  box.innerHTML = `<table><tr><th>驾驶员</th><th>事件</th><th>扣分</th><th>评分</th><th>等级</th></tr>` +
+    list.slice(0,8).map(d=>`<tr><td>${esc(d.driver_name)}</td><td>${d.events}</td>
+      <td>${d.penalty}</td><td class="score">${d.score}</td>
+      <td class="g-${esc(d.grade)}">${esc(d.grade)}</td></tr>`).join('') + `</table>`;
+}
+
+/* ---------- 图表：纯 SVG，无外部依赖 ---------- */
+function barChart(items){
+  const box = $('#chart-violation');
+  if (!items || !items.length){ box.innerHTML='<div class="empty">暂无数据</div>'; return; }
+  const top = items.slice(0,7), max = Math.max(...top.map(i=>i.n), 1);
+  const rowH = 26, W = 340, H = top.length*rowH + 6;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img">` +
+    top.map((it,i)=>{
+      const w = Math.max(2, it.n/max*(W-138)), y = i*rowH+4;
+      const c = it.n_critical>0 ? 'var(--crit)' : 'var(--info)';
+      return `<text x="0" y="${y+13}">${esc(lab(it.violation)).slice(0,8)}</text>
+        <rect x="96" y="${y+3}" width="${w}" height="13" rx="6.5" fill="${c}" opacity=".85"></rect>
+        <text x="${100+w}" y="${y+13}">${it.n}</text>`;
+    }).join('') + `</svg>`;
+}
+
+function areaChart(items){
+  const box = $('#chart-timeline');
+  if (!items || !items.length){ box.innerHTML='<div class="empty">暂无数据</div>'; return; }
+  const W=340,H=110,P=18, max=Math.max(...items.map(i=>i.total),1);
+  const x=i=>P+i*(W-2*P)/Math.max(items.length-1,1);
+  const y=v=>H-P-v/max*(H-2*P);
+  const line=items.map((it,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(it.total).toFixed(1)}`).join(' ');
+  const area=`${line} L${x(items.length-1).toFixed(1)},${H-P} L${x(0).toFixed(1)},${H-P} Z`;
+  const crit=items.map((it,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(it.critical).toFixed(1)}`).join(' ');
+  box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--info)" stop-opacity=".38"/>
+      <stop offset="100%" stop-color="var(--info)" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#g)"></path>
+    <path d="${line}" fill="none" stroke="var(--info)" stroke-width="1.8"></path>
+    <path d="${crit}" fill="none" stroke="var(--crit)" stroke-width="1.4" stroke-dasharray="3 3"></path>
+    <text x="${P}" y="${H-4}">24 小时前</text><text x="${W-P-22}" y="${H-4}">现在</text>
+    <text x="${P}" y="12">峰值 ${max} 条/时段 · 虚线为严重告警</text></svg>`;
+}
+
+/* ---------- 事件详情 + 复核 ---------- */
+async function openModal(id){
+  const ev = byId[id] || await j('/api/v1/events/'+id);
+  const img = ev.evidence && ev.evidence.frame_uri ? `<img src="${esc(ev.evidence.frame_uri)}" alt="证据帧">` : '';
+  $('#sheet').innerHTML = `
+    <h2 style="font-size:17px">${esc(lab(ev.violation))}
+      <span class="n">${esc(ev.severity)}</span></h2>
+    <div class="sub">${esc(ev.vehicle_id)} · ${fmt(ev.ts)} · 持续 ${(ev.duration_s||0).toFixed(1)}s
+      · 置信 ${ev.confidence} · 座位 ${esc((ev.subject||{}).seat||'-')}</div>
+    ${img}
+    <div class="sub">原始信号（误报归因就靠它）</div>
+    <pre>${esc(JSON.stringify(ev.raw_signals||{}, null, 2))}</pre>
+    <div class="sub">复核状态：<b id="rv">${esc(ev.review_status||'pending')}</b></div>
+    <div class="row">
+      <button class="primary" onclick="review('${esc(ev.event_id)}','confirmed')">确认违规</button>
+      <button onclick="review('${esc(ev.event_id)}','dismissed')">判为误报</button>
+      <button onclick="review('${esc(ev.event_id)}','appealed')">驾驶员申诉</button>
+      <button onclick="closeModal()">关闭</button>
+    </div>
+    <p class="note">误报必须有出口。没有复核与申诉流程，司机第一次被误报之后就会想办法把系统关掉，
+    再高的检出率也归零。</p>`;
+  $('#modal').classList.add('on');
+}
+function closeModal(){ $('#modal').classList.remove('on'); }
+async function review(id, status){
+  await fetch(`/api/v1/events/${id}/review`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({status})});
+  const el = $('#rv'); if (el) el.textContent = status;
+  if (byId[id]) byId[id].review_status = status;
+}
+
+/* ---------- 启动 ---------- */
+(async function(){
+  const hist = await j('/api/v1/events?limit=60');
+  hist.events.slice().reverse().forEach(e => pushEvent(e, false));
+  connect(); refresh(); setInterval(refresh, 3000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>车机端提醒 · 模式B</title>
+<style>
+:root{--bg:#f5f5f7;--panel:rgba(255,255,255,.72);--line:rgba(0,0,0,.08);--text:#1d1d1f;--muted:#6e6e73}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--panel:rgba(28,28,30,.72);--line:rgba(255,255,255,.12);--text:#f5f5f7;--muted:#98989d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);min-height:100vh;
+ font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
+ display:flex;flex-direction:column;align-items:center;justify-content:center;padding:22px;gap:14px}
+.card{background:var(--panel);-webkit-backdrop-filter:blur(20px) saturate(180%);
+ backdrop-filter:blur(20px) saturate(180%);border:1px solid var(--line);border-radius:20px;
+ padding:22px;max-width:460px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.07)}
+h1{font-size:18px;margin:0 0 4px;font-weight:600}
+.sub{color:var(--muted);font-size:12.5px}
+#banner{display:none;border-radius:18px;padding:22px;color:#fff;text-align:center;font-size:23px;
+ font-weight:600;letter-spacing:-.02em;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+#banner.on{display:block;animation:pulse 1s ease infinite alternate}
+@keyframes pulse{from{transform:scale(1)}to{transform:scale(1.02)}}
+.log{font-size:12.5px;color:var(--muted);max-height:36vh;overflow:auto;margin-top:10px}
+.log div{padding:6px 0;border-bottom:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<div class="card">
+  <h1>车机端提醒</h1>
+  <div class="sub">车辆 <b id="vid">-</b> · <span id="st">连接中…</span></div>
+  <div class="sub" style="margin-top:9px">
+    本页模拟车内屏幕。模式B 的推理在后台完成，因此**车内提醒也由后台经 WebSocket 下发**——
+    这也意味着断网时车内提醒同样会中断，是模式B 相对车载嵌入式方案的固有短板。
+  </div>
+  <div class="log" id="log"></div>
+</div>
+<script>
+const vid = new URLSearchParams(location.search).get('vehicle') || 'DEMO-001';
+document.getElementById('vid').textContent = vid;
+const banner = document.getElementById('banner'), log = document.getElementById('log');
+let timer = null;
+function connect(){
+  const proto = location.protocol==='https:'?'wss':'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/cabin/${encodeURIComponent(vid)}`);
+  ws.onopen = ()=> document.getElementById('st').textContent = '已连接后台';
+  ws.onclose = ()=>{ document.getElementById('st').textContent='断开，重连中'; setTimeout(connect,1500); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type !== 'cabin_prompt') return;
+    banner.textContent = m.text; banner.style.background = m.banner_color;
+    banner.classList.add('on');
+    if (navigator.vibrate) navigator.vibrate(m.beep ? [220,90,220,90,220] : 180);
+    speak(m.text, m.repeat);
+    const d = document.createElement('div');
+    d.textContent = `${new Date().toLocaleTimeString('zh-CN',{hour12:false})}  [${m.severity}] ${m.text}`;
+    log.insertBefore(d, log.firstChild);
+    clearTimeout(timer); timer = setTimeout(()=>banner.classList.remove('on'), 6000);
+  };
+  setInterval(()=>{ if(ws.readyState===1) ws.send('ping'); }, 15000);
+}
+function speak(text, repeat){
+  if (!window.speechSynthesis) return;
+  for (let i=0;i<Math.max(1,repeat||1);i++){
+    const u = new SpeechSynthesisUtterance(text); u.lang='zh-CN'; speechSynthesis.speak(u);
+  }
+}
+connect();
+</script>
+</body>
+</html>
