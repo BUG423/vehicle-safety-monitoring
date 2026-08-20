@@ -19,3 +19,11 @@ dist/
 build/
 *.log
 models/weights/
+
+# 凭据 —— 绝不入库
+.env
+.env.*
+*.env
+secrets/
+*_key.txt
+*apikey*
